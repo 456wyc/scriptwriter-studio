@@ -396,6 +396,9 @@ kbd { display: inline-block; min-width: 18px; padding: 1px 5px; margin-left: 3px
 .ai-plan-mark { flex: none; width: 12px; color: var(--accent); font-size: 10px; }
 .ai-plan-list li.done .ai-plan-mark { color: var(--green); }
 .ai-steps { max-height: 106px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; padding: 7px 8px; border-radius: 7px; border: 1px solid var(--border); background: var(--panel-2); }
+/* AI 编辑期间只读但可浏览：禁用会改变结构的入口，视觉上不做强干扰 */
+body.ai-editing .block-input { cursor: default; }
+body.ai-editing .type-badge { pointer-events: none; opacity: .6; }
 .ai-step.continue { border-top: 1px dashed var(--border); padding-top: 4px; margin-top: 1px; }
 .ai-step.continue .ai-step-mark, .ai-step.continue .ai-step-text { color: var(--accent); }
 .ai-step { display: flex; gap: 6px; align-items: baseline; font-size: 10.5px; line-height: 1.5; color: var(--text-2); }

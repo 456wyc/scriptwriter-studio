@@ -196,6 +196,8 @@
     api.setDirty(false);
   }
   function scheduleSave() {
+    // AI 编辑期间主进程持有权威库；整库回写会让工具按 index 定位的内容与用户看到的分叉
+    if (aiState.busy) return;
     markSaving();
     $('#dirtyDot').classList.add('on');
     script().updatedAt = Date.now();
@@ -206,6 +208,7 @@
   }
   async function saveNow(silent) {
     clearTimeout(saveTimer);
+    if (aiState.busy) { if (!silent) toast('AI 正在编辑剧本，完成后会自动保存'); return; }
     script().updatedAt = Date.now();
     try { await api.saveLibrary(lib); await api.flushLibrary(); markSaved(); if (!silent) toast('已保存'); }
     catch { toast('保存失败', true); }
@@ -269,6 +272,7 @@
       ta.dataset.id = b.id;
       ta.rows = 1;
       ta.spellcheck = false;
+      ta.readOnly = Boolean(aiState.busy);
       ta.placeholder = TYPES[b.type].ph;
       ta.value = b.text;
 
@@ -300,7 +304,9 @@
     const label = b ? TYPES[b.type].label : '动作描述';
     $('#typeChip').textContent = label;
     $('#statusType').textContent = label;
-    $('#statusHint').textContent = b ? `${label} · Tab 切换类型` : '就绪';
+    $('#statusHint').textContent = aiState.busy
+      ? 'AI 正在编辑 · 剧本暂时只读，可自由浏览'
+      : (b ? `${label} · Tab 切换类型` : '就绪');
     renderOutlineSelection();
   }
 
@@ -1551,7 +1557,7 @@
     host.querySelectorAll('.ai-step.pending').forEach(n => n.remove());
     host.classList.remove('hidden');
     if (!step.pending) aiStepCount += 1;
-    if (typeof step.focus === 'number') aiPendingFlash = step.focus;
+    if (step.focusId || typeof step.focus === 'number') aiPendingFlash = step.focusId || step.focus;
     const row = document.createElement('div');
     row.className = 'ai-step' + (step.ok === false ? ' fail' : '') + (step.pending ? ' pending' : '') + (step.name === 'continue' ? ' continue' : '');
     const mark = step.name === 'continue' ? '↻' : (step.ok === false ? '✕' : '✓');
@@ -1562,27 +1568,50 @@
     host.scrollTop = host.scrollHeight;
   }
 
-  function flashAgentBlock(index) {
-    if (typeof index !== 'number' || !blocks()[index]) return;
-    const el = document.querySelector(`.block[data-id="${CSS.escape(blocks()[index].id)}"]`);
+  // 只高亮改动块，不强制滚动：用户正在浏览剧本时不应被 AI 拉走
+  function flashAgentBlock(key) {
+    if (key === undefined || key === null) return;
+    let id = typeof key === 'string' ? key : null;
+    if (!id && typeof key === 'number' && blocks()[key]) id = blocks()[key].id;
+    if (!id) return;
+    const el = document.querySelector(`.block[data-id="${CSS.escape(id)}"]`);
     if (!el) return;
     el.classList.remove('ai-flash');
     void el.offsetWidth;
     el.classList.add('ai-flash');
-    el.scrollIntoView({ block: 'center', behavior: 'smooth' });
     setTimeout(() => el.classList.remove('ai-flash'), 1600);
   }
 
-  // 主进程每次工具调用后推送最新剧本文档，直接替换内存库并整体重绘，编辑器实时反映改动
+  // 主进程每次工具调用后推送最新剧本文档；重绘时保留滚动位置、焦点与选区
   function applyAgentLibrary(next) {
     if (!next || !Array.isArray(next.scripts) || !next.scripts.length) return;
     clearTimeout(saveTimer);
+    const scroller = $('#editorArea');
+    const scrollTop = scroller ? scroller.scrollTop : 0;
+    const pageY = window.scrollY;
+    const active = document.activeElement;
+    const focusedId = active && active.classList && active.classList.contains('block-input') ? active.dataset.id : null;
+    const selStart = focusedId && typeof active.selectionStart === 'number' ? active.selectionStart : null;
+    const selEnd = focusedId && typeof active.selectionEnd === 'number' ? active.selectionEnd : null;
+
     lib = next;
     const s = script();
     if (!s.blocks.length) s.blocks = [newBlock('action', '')];
     if (!s.blocks.some(b => b.id === activeId)) activeId = s.blocks[0].id;
     renderAll();
     settleHistory();
+
+    if (scroller) scroller.scrollTop = scrollTop;
+    if (pageY) window.scrollTo(0, pageY);
+    if (focusedId) {
+      const ta = $(`.block-input[data-id="${CSS.escape(focusedId)}"]`);
+      if (ta) {
+        ta.focus({ preventScroll: true });
+        if (selStart !== null && selEnd !== null) {
+          try { ta.setSelectionRange(Math.min(selStart, ta.value.length), Math.min(selEnd, ta.value.length)); } catch {}
+        }
+      }
+    }
     const focus = aiPendingFlash;
     aiPendingFlash = null;
     flashAgentBlock(focus);
@@ -1642,6 +1671,11 @@
     $('#aiAgentRun').disabled = busy;
     $('#aiAgentResume').disabled = busy || !aiHasSession;
     $('#aiOutput').classList.toggle('busy', busy);
+    document.body.classList.toggle('ai-editing', busy);
+    $$('.block-input').forEach(ta => { ta.readOnly = busy; });
+    $('#addBlockBtn').disabled = busy;
+    $('#addSceneBtn').disabled = busy;
+    $('#statusHint').textContent = busy ? 'AI 正在编辑 · 剧本暂时只读，可自由浏览' : '就绪';
     updateAiResultButtons();
   }
 
@@ -1987,6 +2021,7 @@
     $('#statusZoom').addEventListener('click', openAppearance);
 
     blocksHost.addEventListener('input', (e) => {
+      if (aiState.busy) return;
       const ta = e.target.closest('.block-input');
       if (!ta) return;
       const b = blocks().find(x => x.id === ta.dataset.id);
@@ -1999,7 +2034,13 @@
       else closeSuggest();
     });
 
-    blocksHost.addEventListener('keydown', onBlockKeydown);
+    blocksHost.addEventListener('keydown', (e) => {
+      if (!aiState.busy) { onBlockKeydown(e); return; }
+      const k = String(e.key).toLowerCase();
+      const nav = ['arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'pageup', 'pagedown', 'home', 'end', 'escape'].includes(k);
+      const copy = (e.ctrlKey || e.metaKey) && ['c', 'a', 'f'].includes(k);
+      if (!nav && !copy) e.preventDefault();
+    });
     blocksHost.addEventListener('focusin', (e) => {
       const ta = e.target.closest('.block-input');
       if (ta) setActive(ta.dataset.id);

@@ -314,6 +314,7 @@ ipcMain.handle('library:load', () => {
 });
 
 ipcMain.handle('library:save', (_event, data) => {
+  if (aiLibraryLocked) return true;
   cache = data;
   scheduleFlush();
   return true;
@@ -445,6 +446,8 @@ ipcMain.handle('workspace:reveal', () => {
 const aiConfigFile = () => path.join(userDir(), 'ai-config.json');
 let aiController = null;
 let aiStopped = false;
+// AI 编辑期间主进程持有权威库：禁止渲染端整库回写，否则工具按 index 定位会与用户看到的内容分叉
+let aiLibraryLocked = false;
 
 async function readAiConfig() {
   const raw = readJson(aiConfigFile()) || {};
@@ -614,9 +617,9 @@ const AGENT_SYSTEM = `你是一个可以直接操作剧本编辑器的专业编�
 1. 第一步必须调用 plan，把整体目标拆成 3-8 个可验收的有序步骤；清单会显示给用户。
 2. 调用 read_script 了解现状，然后按清单逐步编辑；一轮可同时调用多个互不依赖的工具。
 3. 每完成一步立即调用 update_plan 标记进度。未标记完成的步骤，系统会一直判定目标未达成。
-4. 内容块编号以 read_script 返回的 index 为准；插入/删除后编号会变化，必要时重新读取。
+4. 定位内容块一律优先使用 read_script 返回的 id（唯一且稳定）：replace_block / delete_block 传 block_id，insert_block / add_scene / add_dialogue 传 after_id。只有确实拿不到 id 时才退用 index / after_index；插入或删除后所有 index 都会整体漂移，绝不能复用旧编号。工具结果会返回新建块的 id。
 5. 除工具调用外不要输出说明文字。系统会在每次工具结果里回灌「剩余待办」，看到还有未完成项就必须继续调用工具，绝不能停下。
-6. 上下文过长时系统会自动续跑并附上清单状态与剧本快照；收到「这是任务的继续」时从剩余项接着做，不重做已完成编辑。
+6. 上下文过长时系统会自动续跑并附上清单状态与剧本快照，快照同样带 id；收到「这是任务的继续」时从剩余项接着做，不重做已完成编辑。
 7. 只有清单全部完成且系统验收通过，finish 才会被接受；提前调用会被拒绝并告知剩余项。
 
 保持原剧本风格与人物语气；场景标题形如「INT. 地点 - 日」，角色名独占一行。`;
@@ -627,21 +630,28 @@ const AGENT_TOOLS = [
     steps: { type: 'array', items: { type: 'string' }, description: '有序步骤标题，例如「补写第二场冲突」' } }, required: ['steps'] } } },
   { type: 'function', function: { name: 'update_plan', description: '每完成一个步骤就调用，把前 N 步标记为已完成；未全部完成前系统不会允许结束', parameters: { type: 'object', properties: {
     completed: { type: 'integer', description: '已完成的前 N 步数量，例如完成第 1、2 步时传 2' } }, required: ['completed'] } } },
-  { type: 'function', function: { name: 'read_script', description: '读取当前剧本的标题、元数据与全部内容块（index/type/text）', parameters: { type: 'object', properties: {}, required: [] } } },
-  { type: 'function', function: { name: 'insert_block', description: '在指定块之后插入一个新内容块；不填 after_index 则追加到末尾', parameters: { type: 'object', properties: {
-    after_index: { type: 'integer', description: '插入在此编号的块之后' },
+  { type: 'function', function: { name: 'read_script', description: '读取当前剧本的标题、元数据与全部内容块（id/index/type/text）；id 唯一且稳定，编辑时优先用 id 定位', parameters: { type: 'object', properties: {}, required: [] } } },
+  { type: 'function', function: { name: 'insert_block', description: '在指定块之后插入一个新内容块；优先传 after_id，不填则追加到末尾', parameters: { type: 'object', properties: {
+    after_id: { type: 'string', description: '插入在此 id 的块之后（推荐，稳定不变）' },
+    after_index: { type: 'integer', description: '兼容字段：仅在没有 id 时使用，插入/删除后会漂移' },
     type: { type: 'string', enum: AGENT_TYPES, description: '剧本元素类型' },
     text: { type: 'string', description: '正文' } }, required: ['type', 'text'] } } },
-  { type: 'function', function: { name: 'replace_block', description: '替换指定编号内容块的正文（可同时改类型）', parameters: { type: 'object', properties: {
-    index: { type: 'integer' }, text: { type: 'string' }, type: { type: 'string', enum: AGENT_TYPES } }, required: ['index', 'text'] } } },
-  { type: 'function', function: { name: 'delete_block', description: '删除指定编号的内容块', parameters: { type: 'object', properties: { index: { type: 'integer' } }, required: ['index'] } } },
+  { type: 'function', function: { name: 'replace_block', description: '替换指定内容块的正文（优先用 block_id，可同时改类型）', parameters: { type: 'object', properties: {
+    block_id: { type: 'string', description: '目标块 id（推荐，稳定不变）' },
+    index: { type: 'integer', description: '兼容字段：仅在没有 id 时使用' },
+    text: { type: 'string' }, type: { type: 'string', enum: AGENT_TYPES } }, required: ['text'] } } },
+  { type: 'function', function: { name: 'delete_block', description: '删除指定内容块（优先用 block_id）', parameters: { type: 'object', properties: {
+    block_id: { type: 'string', description: '目标块 id（推荐，稳定不变）' },
+    index: { type: 'integer', description: '兼容字段：仅在没有 id 时使用' } }, required: [] } } },
   { type: 'function', function: { name: 'add_scene', description: '新增一场戏：插入场景标题和一个动作块', parameters: { type: 'object', properties: {
     heading: { type: 'string', description: '例如 INT. 咖啡馆 - 夜' },
     action: { type: 'string', description: '开场动作描述' },
+    after_id: { type: 'string', description: '插入在此 id 的块之后（推荐）' },
     after_index: { type: 'integer' } }, required: ['heading'] } } },
   { type: 'function', function: { name: 'add_dialogue', description: '新增一段角色台词（自动插入角色名、可选括号提示与对白）', parameters: { type: 'object', properties: {
     character: { type: 'string' }, text: { type: 'string' },
     parenthetical: { type: 'string', description: '可选，形如 （低声）' },
+    after_id: { type: 'string', description: '插入在此 id 的块之后（推荐）' },
     after_index: { type: 'integer' } }, required: ['character', 'text'] } } },
   { type: 'function', function: { name: 'set_meta', description: '修改剧本元数据', parameters: { type: 'object', properties: {
     field: { type: 'string', enum: ['title', 'author', 'genre', 'logline', 'draft'] },
@@ -705,6 +715,14 @@ function agentToolCore(name, args, lib, state) {
     if (typeof v === 'string') { const i = arr.findIndex(b => b.id === v); if (i >= 0) return i; }
     return fallback;
   };
+  // id 优先且严格：明确传了 id 却找不到时返回 -1，绝不静默退回 index 去改错别的块
+  const locate = (idVal, idxVal, fallback) => {
+    if (typeof idVal === 'string' && idVal) {
+      const i = arr.findIndex(b => b.id === idVal);
+      return i >= 0 ? i : -1;
+    }
+    return at(idxVal, fallback);
+  };
   const mk = (type, text) => ({ id: uidMain(), type: AGENT_TYPES.includes(type) ? type : 'action', text: String(text ?? '') });
   switch (name) {
     case 'plan': {
@@ -729,38 +747,42 @@ function agentToolCore(name, args, lib, state) {
     case 'read_script':
       return { ok: true, ...agentSnapshot(s) };
     case 'insert_block': {
-      const pos = at(args.after_index, arr.length - 1);
+      const pos = locate(args.after_id, args.after_index, arr.length - 1);
+      if (pos < 0) return { ok: false, error: 'after_id 无效：请重新 read_script 获取最新 id' };
       const b = mk(args.type, args.text);
       arr.splice(pos + 1, 0, b);
       return { ok: true, index: pos + 1, id: b.id, total: arr.length };
     }
     case 'replace_block': {
-      const i = at(args.index, -1);
-      if (i < 0 || !arr[i]) return { ok: false, error: '内容块编号无效' };
+      const i = locate(args.block_id, args.index, -1);
+      if (i < 0 || !arr[i]) return { ok: false, error: args.block_id ? 'block_id 无效：请重新 read_script 获取最新 id' : '内容块编号无效' };
       arr[i].text = String(args.text ?? '');
       if (AGENT_TYPES.includes(args.type)) arr[i].type = args.type;
-      return { ok: true, index: i, total: arr.length };
+      return { ok: true, index: i, id: arr[i].id, total: arr.length };
     }
     case 'delete_block': {
-      const i = at(args.index, -1);
-      if (i < 0 || !arr[i]) return { ok: false, error: '内容块编号无效' };
+      const i = locate(args.block_id, args.index, -1);
+      if (i < 0 || !arr[i]) return { ok: false, error: args.block_id ? 'block_id 无效：请重新 read_script 获取最新 id' : '内容块编号无效' };
       if (arr.length <= 1) return { ok: false, error: '剧本至少保留一个内容块' };
+      const deletedId = arr[i].id;
       arr.splice(i, 1);
-      return { ok: true, total: arr.length };
+      return { ok: true, deleted_id: deletedId, total: arr.length };
     }
     case 'add_scene': {
-      const pos = at(args.after_index, arr.length - 1);
+      const pos = locate(args.after_id, args.after_index, arr.length - 1);
+      if (pos < 0) return { ok: false, error: 'after_id 无效：请重新 read_script 获取最新 id' };
       const added = [mk('scene', args.heading), mk('action', args.action || '')];
       arr.splice(pos + 1, 0, ...added);
-      return { ok: true, index: pos + 1, total: arr.length };
+      return { ok: true, index: pos + 1, id: added[0].id, total: arr.length };
     }
     case 'add_dialogue': {
-      const pos = at(args.after_index, arr.length - 1);
+      const pos = locate(args.after_id, args.after_index, arr.length - 1);
+      if (pos < 0) return { ok: false, error: 'after_id 无效：请重新 read_script 获取最新 id' };
       const added = [mk('character', args.character)];
       if (args.parenthetical) added.push(mk('parenthetical', args.parenthetical));
       added.push(mk('dialogue', args.text));
       arr.splice(pos + 1, 0, ...added);
-      return { ok: true, index: pos + 1, total: arr.length };
+      return { ok: true, index: pos + 1, id: added[0].id, total: arr.length };
     }
     case 'set_meta': {
       if (!['title', 'author', 'genre', 'logline', 'draft'].includes(args.field)) return { ok: false, error: '字段名无效' };
@@ -782,16 +804,17 @@ function agentToolCore(name, args, lib, state) {
 
 function agentStepSummary(name, args, r) {
   const brief = (t) => String(t || '').replace(/\s+/g, ' ').slice(0, 40);
+  if (name === 'finish') return r.ok === false ? `验收未通过：${brief(r.error)}` : `目标已验收 · ${brief(r.summary)}`;
+  if (r.ok === false) return brief(r.error) || `工具失败：${name}`;
   if (name === 'plan') return `制定计划 · ${r.total ?? 0} 个步骤`;
-  if (name === 'update_plan') return r.ok === false ? brief(r.error) : `任务进度 ${r.completed ?? r.progress?.done ?? 0}/${r.total ?? 0}`;
+  if (name === 'update_plan') return `任务进度 ${r.completed ?? r.progress?.done ?? 0}/${r.total ?? 0}`;
   if (name === 'read_script') return `读取剧本 · ${r.total ?? 0} 个内容块`;
   if (name === 'insert_block') return `插入${args.type || '内容'}：${brief(args.text)}`;
-  if (name === 'replace_block') return `改写第 ${args.index} 块：${brief(args.text)}`;
-  if (name === 'delete_block') return `删除第 ${args.index} 块`;
+  if (name === 'replace_block') return `改写${args.block_id ? `块 ${args.block_id}` : `第 ${args.index} 块`}：${brief(args.text)}`;
+  if (name === 'delete_block') return `删除${args.block_id ? `块 ${args.block_id}` : `第 ${args.index} 块`}`;
   if (name === 'add_scene') return `新增场景：${brief(args.heading)}`;
   if (name === 'add_dialogue') return `新增台词：${brief(args.character)}`;
   if (name === 'set_meta') return `更新${args.field}`;
-  if (name === 'finish') return r.ok === false ? `验收未通过：${brief(r.error)}` : `目标已验收 · ${brief(r.summary)}`;
   return brief(name);
 }
 
@@ -833,7 +856,7 @@ function agentCompactScript(lib) {
   const from = Math.max(0, all.length - 120);
   return {
     title: s.title, total: all.length, omitted: from,
-    blocks: all.slice(from).map((b, i) => ({ index: from + i, type: b.type, text: String(b.text || '').slice(0, 90) }))
+    blocks: all.slice(from).map((b, i) => ({ index: from + i, id: b.id, type: b.type, text: String(b.text || '').slice(0, 90) }))
   };
 }
 
@@ -856,7 +879,7 @@ function agentMessages(lib, instruction, state, continuing) {
   }
   return [
     { role: 'system', content: AGENT_SYSTEM },
-    { role: 'user', content: `${head}${status}\n【已执行步骤（最近 40 条）】\n${state.steps.slice(-40).map((x, i) => `${i + 1}. ${x}`).join('\n') || '（无）'}\n【当前剧本快照】${JSON.stringify(agentCompactScript(lib))}\n\n这是任务的继续。不要重做已完成的编辑，从剩余目标接着做；仍有未完成项就必须继续调用工具，全部完成并验收通过后才能结束。` }
+    { role: 'user', content: `${head}${status}\n【已执行步骤（最近 40 条）】\n${state.steps.slice(-40).map((x, i) => `${i + 1}. ${x}`).join('\n') || '（无）'}\n【当前剧本快照】${JSON.stringify(agentCompactScript(lib))}\n\n这是任务的继续。不要重做已完成的编辑，从剩余目标接着做；快照中的 id 稳定不变，定位一律优先用 id，不要复用旧 index；仍有未完成项就必须继续调用工具，全部完成并验收通过后才能结束。` }
   ];
 }
 
@@ -922,7 +945,8 @@ async function runBuiltinAgent({ cfg, instruction, lib, event, signal, prior }) 
         roundToolCalls++;
         const summary = agentStepSummary(name, args, result);
         state.steps.push(summary);
-        if (name !== 'finish' || result.ok === false) sendStep({ name, args, ok: result.ok !== false, focus: result.index, summary });
+        const focusId = typeof result.index === 'number' ? (agentScript(lib).blocks[result.index]?.id || null) : null;
+        if (name !== 'finish' || result.ok === false) sendStep({ name, args, ok: result.ok !== false, focus: result.index, focusId, summary });
         if ((name === 'plan' && result.ok) || name === 'update_plan') sendPlan();
         if (!event.sender.isDestroyed()) event.sender.send('ai:library', lib);
         if (result.done === true) {
@@ -948,6 +972,7 @@ async function runBuiltinAgent({ cfg, instruction, lib, event, signal, prior }) 
 
 ipcMain.handle('ai:agent', async (event, payload) => {
   let lib = null;
+  aiLibraryLocked = true;
   try {
     aiStopped = false;
     const cfg = await readAiConfig();
@@ -1005,6 +1030,7 @@ ipcMain.handle('ai:agent', async (event, payload) => {
       toolCalls: result.toolCalls, editCount: result.editCount,
       verified: Boolean(result.verified), engine: payload.engine || 'builtin'
     };
+    cache = lib;
     persistLibrary(lib);
     if (!event.sender.isDestroyed()) event.sender.send('ai:library', lib);
     return {
@@ -1014,9 +1040,11 @@ ipcMain.handle('ai:agent', async (event, payload) => {
       plan: result.plan, progress
     };
   } catch (err) {
-    if (lib) { try { persistLibrary(lib); } catch {} }
+    if (lib) { cache = lib; try { persistLibrary(lib); } catch {} }
     if (err && (err.name === 'AbortError' || aiStopped)) return { ok: true, text: '', library: lib || cache, stopped: true, truncated: true };
     return { ok: false, error: String(err.message || err) };
+  } finally {
+    aiLibraryLocked = false;
   }
 });
 
@@ -1040,11 +1068,11 @@ async function runDeepAgent({ cfg, instruction, lib, event, signal, state }) {
     plan: z.object({ steps: z.array(z.string()) }),
     update_plan: z.object({ completed: z.number().int() }),
     read_script: z.object({}),
-    insert_block: z.object({ after_index: z.number().int().optional(), type: z.enum(AGENT_TYPES), text: z.string() }),
-    replace_block: z.object({ index: z.number().int(), text: z.string(), type: z.enum(AGENT_TYPES).optional() }),
-    delete_block: z.object({ index: z.number().int() }),
-    add_scene: z.object({ heading: z.string(), action: z.string().optional(), after_index: z.number().int().optional() }),
-    add_dialogue: z.object({ character: z.string(), text: z.string(), parenthetical: z.string().optional(), after_index: z.number().int().optional() }),
+    insert_block: z.object({ after_id: z.string().optional(), after_index: z.number().int().optional(), type: z.enum(AGENT_TYPES), text: z.string() }),
+    replace_block: z.object({ block_id: z.string().optional(), index: z.number().int().optional(), text: z.string(), type: z.enum(AGENT_TYPES).optional() }),
+    delete_block: z.object({ block_id: z.string().optional(), index: z.number().int().optional() }),
+    add_scene: z.object({ heading: z.string(), action: z.string().optional(), after_id: z.string().optional(), after_index: z.number().int().optional() }),
+    add_dialogue: z.object({ character: z.string(), text: z.string(), parenthetical: z.string().optional(), after_id: z.string().optional(), after_index: z.number().int().optional() }),
     set_meta: z.object({ field: z.enum(['title', 'author', 'genre', 'logline', 'draft']), value: z.string() }),
     finish: z.object({ summary: z.string() })
   };
@@ -1063,8 +1091,9 @@ async function runDeepAgent({ cfg, instruction, lib, event, signal, state }) {
         tracker.steps.push(summary);
         if (name === 'finish' && result.done === true) { finishSummary = result.summary || ''; tracker.verified = true; }
         const pg = agentProgress(tracker);
+        const focusId = typeof result.index === 'number' ? (agentScript(lib).blocks[result.index]?.id || null) : null;
         if (!event.sender.isDestroyed()) {
-          if (name !== 'finish' || result.ok === false) event.sender.send('ai:step', { name, args, ok: result.ok !== false, focus: result.index, summary });
+          if (name !== 'finish' || result.ok === false) event.sender.send('ai:step', { name, args, ok: result.ok !== false, focus: result.index, focusId, summary });
           if ((name === 'plan' && result.ok) || name === 'update_plan') event.sender.send('ai:plan', normalizeAgentPlan(tracker.plan));
           event.sender.send('ai:library', lib);
         }
