@@ -115,11 +115,9 @@ npm run build
 
 ## GitHub Pages
 
-落地页源码在 `docs/index.html`，为无外部依赖的单文件页面。
+落地页源码在 `docs/index.html`，为无外部依赖的单文件页面，线上地址：<https://456wyc.github.io/scriptwriter-studio/>
 
-1. 仓库 **Settings → Pages**；
-2. **Build and deployment → Source** 选择 `Deploy from a branch`；
-3. Branch 选 `main`，目录选 `/docs`，保存后即可访问 <https://456wyc.github.io/scriptwriter-studio/>。
+部署由 `.github/workflows/pages.yml` 完成：推送到 `main` 且改动涉及 `docs/` 时，Actions 会把 `docs/` 上传为制品并发布；也可在 Actions 页面手动运行 `Deploy GitHub Pages`。仓库的 **Settings → Pages → Build and deployment → Source** 需设为 **GitHub Actions**（当前已按此配置）。
 
 本地预览：
 
