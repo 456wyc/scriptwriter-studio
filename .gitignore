@@ -1,0 +1,24 @@
+# 依赖与构建产物
+node_modules/
+dist/
+out/
+build/
+release/
+*.log
+npm-debug.log*
+
+# 本地编辑器的用户数据与缓存
+.codebuddy/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 环境变量与密钥（API Key 只存于系统加密的 userData，不入库）
+.env
+.env.*
+!.env.example
+
+# 编辑器配置
+.vscode/
+.idea/
+*.swp

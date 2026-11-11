@@ -1,0 +1,492 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="剧本工坊是一款本地优先的开源桌面剧本编辑器：专业剧本排版、场景大纲、角色统计、Fountain 互通、PDF 导出，以及目标驱动、由系统验收的 AI 编剧智能体。">
+<meta name="theme-color" content="#0a0d13">
+<meta property="og:type" content="website">
+<meta property="og:title" content="剧本工坊 · 把故事，写成剧本">
+<meta property="og:description" content="本地优先的开源剧本编辑器，带一个不会写到一半就停的 AI 编剧智能体。">
+<meta property="og:url" content="https://456wyc.github.io/scriptwriter-studio/">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23dfa95c'/%3E%3Cpath d='M16 20h32M16 30h24M16 40h28M16 50h18' stroke='%230a0d13' stroke-width='4' stroke-linecap='round'/%3E%3C/svg%3E">
+<title>剧本工坊 · 把故事，写成剧本</title>
+<style>
+:root{
+  --bg:#0a0d13; --bg-2:#0f131b; --panel:#151a24; --panel-2:#1b212d;
+  --line:rgba(255,255,255,.09); --line-strong:rgba(255,255,255,.16);
+  --ink:#ece9e2; --muted:#9aa4ba; --dim:#6d7689;
+  --gold:#dfa95c; --gold-soft:rgba(223,169,92,.11); --green:#66cfa0;
+  --paper:#f7f3e9; --paper-ink:#2c313b; --paper-dim:#8b8577;
+  --maxw:1160px;
+  --sans:"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans CJK SC",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  --serif:"Songti SC","Noto Serif CJK SC","Source Han Serif SC",Georgia,serif;
+}
+*,*::before,*::after{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0; background:var(--bg); color:var(--ink); font-family:var(--sans);
+  font-size:15px; line-height:1.7; -webkit-font-smoothing:antialiased;
+  overflow-x:hidden;
+}
+body::before{
+  content:""; position:fixed; inset:0; pointer-events:none; z-index:0;
+  background:
+    radial-gradient(760px 460px at 18% -6%, rgba(223,169,92,.13), transparent 70%),
+    radial-gradient(700px 500px at 88% 12%, rgba(90,120,190,.10), transparent 72%),
+    radial-gradient(600px 400px at 50% 105%, rgba(223,169,92,.05), transparent 70%);
+}
+.wrap{width:min(var(--maxw),calc(100% - 48px));margin-inline:auto;position:relative;z-index:1}
+a{color:inherit;text-decoration:none}
+::selection{background:rgba(223,169,92,.3);color:#fff}
+
+/* ---------- nav ---------- */
+.nav{
+  position:sticky; top:0; z-index:30; border-bottom:1px solid var(--line);
+  background:rgba(10,13,19,.78); backdrop-filter:blur(14px);
+}
+.nav-in{display:flex;align-items:center;gap:26px;height:62px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:.02em;white-space:nowrap}
+.brand-mark{
+  width:26px;height:26px;border-radius:7px;background:var(--gold);flex:none;
+  display:grid;place-content:center;gap:3px;
+}
+.brand-mark i{display:block;width:12px;height:2px;background:#0a0d13;border-radius:2px}
+.brand-mark i:nth-child(2){width:9px}
+.brand-mark i:nth-child(3){width:11px}
+.nav-links{display:flex;gap:24px;margin-left:auto;align-items:center}
+.nav-links a{font-size:13px;color:var(--muted);transition:color .2s}
+.nav-links a:hover{color:var(--ink)}
+.nav-links .nav-gh{
+  border:1px solid var(--line-strong); border-radius:8px; padding:6px 13px; color:var(--ink);
+}
+.nav-links .nav-gh:hover{border-color:var(--gold);color:var(--gold)}
+
+/* ---------- hero ---------- */
+.hero{text-align:center;padding:96px 0 56px}
+.eyebrow{
+  display:inline-flex;align-items:center;gap:9px;font-size:11.5px;letter-spacing:.16em;
+  color:var(--gold);border:1px solid rgba(223,169,92,.3);background:var(--gold-soft);
+  padding:6px 15px;border-radius:999px;margin-bottom:28px;
+}
+.eyebrow::before{content:"";width:5px;height:5px;border-radius:50%;background:var(--gold)}
+.hero h1{
+  margin:0;font-size:clamp(42px,7.2vw,82px);line-height:1.1;font-weight:700;
+  letter-spacing:-.035em;
+}
+.hero h1 em{font-style:normal;color:var(--gold)}
+.hero-sub{
+  max-width:660px;margin:26px auto 0;color:var(--muted);font-size:clamp(15px,1.7vw,18px);line-height:1.85;
+}
+.hero-sub b{color:var(--ink);font-weight:500}
+.cta{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:36px}
+.btn{
+  display:inline-flex;align-items:center;gap:9px;border-radius:10px;padding:13px 24px;
+  font-size:14px;font-weight:600;border:1px solid transparent;transition:transform .2s,background .2s,border-color .2s,box-shadow .2s;
+}
+.btn:hover{transform:translateY(-2px)}
+.btn-primary{background:var(--gold);color:#171208;box-shadow:0 10px 30px rgba(223,169,92,.22)}
+.btn-primary:hover{box-shadow:0 14px 38px rgba(223,169,92,.32)}
+.btn-ghost{border-color:var(--line-strong);color:var(--ink);background:rgba(255,255,255,.02)}
+.btn-ghost:hover{border-color:var(--gold);color:var(--gold)}
+.hero-note{margin-top:20px;font-size:12.5px;color:var(--dim)}
+.hero-note a{color:var(--muted);border-bottom:1px solid var(--line-strong)}
+.hero-note a:hover{color:var(--gold)}
+
+/* ---------- app mockup ---------- */
+.stage{position:relative;padding-bottom:20px}
+.stage::before{
+  content:"";position:absolute;inset:12% 8% 0;background:radial-gradient(closest-side,rgba(223,169,92,.14),transparent);
+  filter:blur(40px);pointer-events:none;
+}
+.window{
+  position:relative;border:1px solid var(--line-strong);border-radius:14px;overflow:hidden;
+  background:var(--bg-2);box-shadow:0 40px 90px rgba(0,0,0,.6),0 0 0 1px rgba(255,255,255,.02);
+}
+.win-bar{
+  display:flex;align-items:center;gap:10px;height:38px;padding:0 14px;
+  background:#191e28;border-bottom:1px solid var(--line);font-size:11.5px;color:var(--muted)
+}
+.dots{display:flex;gap:6px;margin-right:8px}
+.dots i{width:9px;height:9px;border-radius:50%;background:#3c4351}
+.dots i:first-child{background:#d97a68}.dots i:nth-child(2){background:#d9b768}.dots i:nth-child(3){background:#6cbf90}
+.win-title{color:var(--ink);font-weight:500}
+.win-saved{margin-left:auto;color:var(--green);display:flex;align-items:center;gap:6px}
+.win-saved::before{content:"";width:5px;height:5px;border-radius:50%;background:var(--green)}
+.win-body{display:grid;grid-template-columns:196px minmax(0,1fr) 258px;min-height:434px}
+.win-left,.win-right{padding:16px 14px;font-size:11px;color:var(--muted);background:#121722}
+.win-left{border-right:1px solid var(--line)}
+.win-right{border-left:1px solid var(--line)}
+.win-label{font-size:10px;letter-spacing:.12em;color:var(--dim);margin-bottom:12px;text-transform:uppercase}
+.scene-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:3px}
+.scene-list li{padding:7px 9px;border-radius:6px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.scene-list li.active{background:var(--gold-soft);color:var(--gold);border-left:2px solid var(--gold)}
+.scene-list li span{color:var(--dim);margin-right:7px;font-variant-numeric:tabular-nums}
+.goal-box{margin-top:22px;padding-top:14px;border-top:1px solid var(--line);font-size:10.5px}
+.goal-row{display:flex;justify-content:space-between;margin-bottom:8px}
+.progress{height:4px;border-radius:4px;background:#252c39;overflow:hidden}
+.progress i{display:block;height:100%;width:62%;background:var(--gold);border-radius:4px}
+.goal-meta{margin-top:7px;color:var(--dim)}
+.win-paper{
+  background:var(--paper);color:var(--paper-ink);padding:30px 40px;font-family:var(--serif);
+  font-size:12px;line-height:1.75;position:relative;
+}
+.win-paper::after{content:"";position:absolute;inset:0;pointer-events:none;box-shadow:inset 0 0 60px rgba(120,100,60,.08)}
+.paper-tag{font-family:var(--sans);font-size:9.5px;letter-spacing:.1em;color:var(--paper-dim);margin-bottom:24px}
+.p-scene{font-weight:700;letter-spacing:.04em;margin-top:18px;font-size:12px}
+.p-action{margin-top:12px;color:#424750}
+.p-char{text-align:center;margin-top:16px;font-weight:600;letter-spacing:.1em}
+.p-par{text-align:center;color:#6f6a60;font-size:11px}
+.p-dia{text-align:center;max-width:76%;margin:6px auto 0}
+.p-note{margin-top:18px;padding-top:10px;border-top:1px dashed rgba(0,0,0,.12);color:var(--paper-dim);font-size:10.5px;font-family:var(--sans)}
+.ai-tag{display:flex;align-items:center;gap:6px;font-size:10px;color:var(--green);margin-bottom:11px}
+.ai-tag::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--green)}
+.ai-input{
+  border:1px solid var(--line-strong);border-radius:7px;padding:9px 10px;color:var(--ink);
+  font-size:10.5px;line-height:1.6;background:#0d121b;margin-bottom:13px;
+}
+.ai-input span{color:var(--dim)}
+.plan{border:1px solid rgba(223,169,92,.32);background:var(--gold-soft);border-radius:8px;padding:10px 11px}
+.plan-head{display:flex;justify-content:space-between;gap:6px;font-size:9.5px;color:var(--gold);font-weight:600;margin-bottom:8px}
+.plan-head span{color:var(--muted);font-weight:400}
+.plan ol{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;font-size:10.5px}
+.plan li{display:flex;gap:7px;align-items:baseline;color:var(--ink)}
+.plan li b{flex:none;color:var(--gold);font-weight:600}
+.plan li.done{color:var(--dim)}
+.plan li.done b{color:var(--green)}
+.plan li.done span{text-decoration:line-through}
+.ai-steps{margin-top:13px;display:flex;flex-direction:column;gap:5px;font-size:10px;color:var(--dim)}
+.ai-steps div{display:flex;gap:7px}
+.ai-steps b{color:var(--green);font-weight:500}
+.ai-steps .cont b{color:var(--gold)}
+.win-status{
+  display:flex;align-items:center;gap:14px;height:28px;padding:0 14px;background:#191e28;
+  border-top:1px solid var(--line);font-size:10px;color:var(--dim)
+}
+.win-status .sep{width:1px;height:10px;background:var(--line-strong)}
+.win-status .right{margin-left:auto;color:var(--muted)}
+.float-badge{
+  position:absolute;right:-14px;bottom:34px;background:#1c2330;border:1px solid rgba(102,207,160,.4);
+  color:var(--green);font-size:11px;padding:9px 14px;border-radius:9px;
+  box-shadow:0 12px 30px rgba(0,0,0,.4);animation:float 4s ease-in-out infinite;
+}
+@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
+
+/* ---------- sections ---------- */
+.section{padding:104px 0 0}
+.sec-head{max-width:660px;margin-bottom:42px}
+.sec-head.center{margin-inline:auto;text-align:center}
+.kicker{font-size:11px;letter-spacing:.18em;color:var(--gold);text-transform:uppercase;margin:0 0 14px}
+.sec-head h2{margin:0;font-size:clamp(28px,4vw,42px);line-height:1.3;letter-spacing:-.02em;font-weight:700}
+.sec-head p{margin:16px 0 0;color:var(--muted);font-size:15px;line-height:1.85}
+
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.card{
+  border:1px solid var(--line);background:linear-gradient(160deg,rgba(255,255,255,.035),rgba(255,255,255,.008));
+  border-radius:12px;padding:26px 24px;transition:border-color .25s,transform .25s,background .25s;
+}
+.card:hover{border-color:rgba(223,169,92,.4);transform:translateY(-3px);background:rgba(223,169,92,.045)}
+.card-no{font-size:11px;letter-spacing:.12em;color:var(--gold);font-variant-numeric:tabular-nums}
+.card h3{margin:18px 0 9px;font-size:16.5px;font-weight:600;letter-spacing:.01em}
+.card p{margin:0;color:var(--muted);font-size:13px;line-height:1.8}
+.card .rule{width:28px;height:2px;background:var(--gold);margin-top:16px;border-radius:2px;opacity:.7}
+
+/* ---------- agent ---------- */
+.agent-panel{
+  border:1px solid var(--line-strong);border-radius:16px;
+  background:linear-gradient(140deg,#141a24,#0d121a 70%);
+  padding:46px;display:grid;grid-template-columns:1fr 1fr;gap:48px;align-items:center;
+}
+.agent-panel h2{margin:0;font-size:clamp(26px,3.4vw,36px);line-height:1.35;letter-spacing:-.02em}
+.agent-panel > div:first-child > p{margin:16px 0 26px;color:var(--muted);font-size:14px;line-height:1.9}
+.flow{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:18px}
+.flow li{display:flex;gap:14px;align-items:flex-start}
+.flow-no{
+  flex:none;width:26px;height:26px;border-radius:7px;border:1px solid rgba(223,169,92,.4);
+  color:var(--gold);font-size:11px;display:grid;place-content:center;margin-top:2px;
+}
+.flow b{display:block;font-size:13.5px;font-weight:600}
+.flow span{color:var(--muted);font-size:12.5px;line-height:1.7}
+.gate{
+  border:1px solid var(--line-strong);border-radius:12px;background:#0a0e15;padding:18px;
+  box-shadow:0 24px 60px rgba(0,0,0,.4);
+}
+.gate-head{display:flex;justify-content:space-between;font-size:10.5px;letter-spacing:.1em;color:var(--dim);margin-bottom:14px}
+.gate-msg{border-radius:9px;padding:12px 14px;font-size:11.5px;line-height:1.7;margin-bottom:10px}
+.gate-msg.reject{border:1px solid rgba(217,122,104,.35);background:rgba(217,122,104,.08);color:#e8a99b}
+.gate-msg.pass{border:1px solid rgba(102,207,160,.35);background:rgba(102,207,160,.08);color:var(--green)}
+.gate-msg b{display:block;margin-bottom:3px;font-size:11px;letter-spacing:.05em}
+.gate-code{
+  font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:10.5px;color:var(--muted);
+  background:#111722;border:1px solid var(--line);border-radius:8px;padding:11px 13px;margin-top:14px;
+  white-space:pre-wrap;line-height:1.7
+}
+.gate-code i{font-style:normal;color:var(--gold)}
+
+/* ---------- start ---------- */
+.start-grid{display:grid;grid-template-columns:1.05fr .95fr;gap:22px;align-items:stretch}
+.code-card{border:1px solid var(--line-strong);border-radius:12px;overflow:hidden;background:#0d121b}
+.code-head{display:flex;align-items:center;justify-content:space-between;padding:11px 16px;border-bottom:1px solid var(--line);font-size:11px;color:var(--dim)}
+.code-head button{
+  background:none;border:1px solid var(--line-strong);color:var(--muted);border-radius:6px;
+  padding:3px 10px;font-size:11px;cursor:pointer;font-family:inherit;transition:color .2s,border-color .2s
+}
+.code-head button:hover{color:var(--gold);border-color:var(--gold)}
+pre{
+  margin:0;padding:22px 20px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;
+  font-size:12.5px;line-height:2;color:#d7dfec;overflow-x:auto
+}
+pre .c{color:var(--dim)}
+pre .g{color:var(--gold)}
+.start-list{list-style:none;margin:0;padding:4px 0;display:flex;flex-direction:column;gap:22px}
+.start-list li{display:flex;gap:16px}
+.start-list .n{
+  flex:none;width:28px;height:28px;border-radius:50%;background:var(--gold-soft);color:var(--gold);
+  display:grid;place-content:center;font-size:12px;border:1px solid rgba(223,169,92,.35)
+}
+.start-list b{display:block;font-size:14px;font-weight:600;margin-bottom:3px}
+.start-list span{color:var(--muted);font-size:13px;line-height:1.75}
+
+/* ---------- footer ---------- */
+.footer{margin-top:110px;border-top:1px solid var(--line);padding:36px 0 46px}
+.footer-in{display:flex;align-items:center;gap:20px;flex-wrap:wrap}
+.footer-in .brand{font-size:14px}
+.footer-links{display:flex;gap:22px;margin-left:auto;font-size:12.5px;color:var(--muted)}
+.footer-links a:hover{color:var(--gold)}
+.footer-meta{width:100%;margin-top:22px;padding-top:20px;border-top:1px solid var(--line);font-size:11.5px;color:var(--dim);display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
+
+.reveal{opacity:0;transform:translateY(20px);transition:opacity .65s ease,transform .65s ease}
+.reveal.in{opacity:1;transform:none}
+
+@media(max-width:980px){
+  .win-body{grid-template-columns:1fr}
+  .win-left,.win-right{display:none}
+  .win-paper{padding:34px 30px;min-height:360px}
+  .grid{grid-template-columns:repeat(2,1fr)}
+  .agent-panel{grid-template-columns:1fr;gap:34px;padding:34px}
+  .start-grid{grid-template-columns:1fr}
+}
+@media(max-width:640px){
+  .wrap{width:calc(100% - 32px)}
+  .nav-links a:not(.nav-gh){display:none}
+  .nav-in{gap:12px}
+  .hero{padding:64px 0 40px}
+  .hero-sub{font-size:14.5px}
+  .btn{padding:12px 18px;font-size:13px}
+  .section{padding-top:78px}
+  .grid{grid-template-columns:1fr}
+  .card{padding:22px 20px}
+  .agent-panel{padding:26px 20px}
+  .float-badge{right:6px;bottom:12px;font-size:10px;padding:7px 10px}
+  .win-paper{padding:26px 20px;font-size:11.5px}
+  .footer-links{margin-left:0;width:100%;flex-wrap:wrap}
+}
+@media(prefers-reduced-motion:reduce){
+  html{scroll-behavior:auto}
+  *,*::before,*::after{animation:none!important;transition:none!important}
+  .reveal{opacity:1;transform:none}
+}
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap nav-in">
+    <a class="brand" href="#top"><span class="brand-mark"><i></i><i></i><i></i></span>剧本工坊</a>
+    <nav class="nav-links">
+      <a href="#features">功能</a>
+      <a href="#agent">AI 智能体</a>
+      <a href="#start">快速开始</a>
+      <a class="nav-gh" href="https://github.com/456wyc/scriptwriter-studio">GitHub ↗</a>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+  <section class="wrap hero">
+    <div class="eyebrow">本地优先 · 开源免费 · Electron 桌面应用</div>
+    <h1>把故事，<br><em>写成剧本。</em></h1>
+    <p class="hero-sub">
+      一个懂剧本格式的写作环境：标准元素排版、场景大纲、角色统计、Fountain 互通与 A4 PDF 导出。
+      还有一个 <b>目标驱动、由系统验收</b> 的 AI 智能体——不会写到一半就停下来。
+    </p>
+    <div class="cta">
+      <a class="btn btn-primary" href="#start">开始使用 <span aria-hidden="true">→</span></a>
+      <a class="btn btn-ghost" href="https://github.com/456wyc/scriptwriter-studio">查看源码</a>
+    </div>
+    <p class="hero-note">也可前往 <a href="https://github.com/456wyc/scriptwriter-studio/releases">Releases</a> 获取打包版本 · Windows x64 · 无需账号 · 剧本只存在你自己的电脑里</p>
+  </section>
+
+  <section class="wrap stage reveal" aria-label="应用界面预览">
+    <div class="window">
+      <div class="win-bar">
+        <span class="dots"><i></i><i></i><i></i></span>
+        <span class="win-title">剧本工坊 — 暴雨夜</span>
+        <span class="win-saved">本地自动保存</span>
+      </div>
+      <div class="win-body">
+        <aside class="win-left">
+          <div class="win-label">场景大纲</div>
+          <ul class="scene-list">
+            <li class="active"><span>01</span>INT. 便利店 - 夜</li>
+            <li><span>02</span>EXT. 街口 - 夜</li>
+            <li><span>03</span>INT. 车里 - 夜</li>
+            <li><span>04</span>EXT. 天桥 - 黎明</li>
+          </ul>
+          <div class="goal-box">
+            <div class="goal-row"><span>目标页数</span><span>90 页</span></div>
+            <div class="progress"><i></i></div>
+            <div class="goal-meta">已完成 56 / 90 页 · 62%</div>
+          </div>
+        </aside>
+
+        <div class="win-paper">
+          <div class="paper-tag">封面 · 第 1 稿 · 导出 PDF 时独立成页</div>
+          <div class="p-scene">INT. 便利店 - 夜</div>
+          <div class="p-action">雨敲在玻璃上，货架的白光把两个人的影子拉得很长。收银机吐出一张小票，谁也没有去撕。</div>
+          <div class="p-char">林越</div>
+          <div class="p-par">（低声）</div>
+          <div class="p-dia">我们十分钟后打烊。</div>
+          <div class="p-char">陈雾</div>
+          <div class="p-dia">那就在十分钟里，把话说完。</div>
+          <div class="p-action">她把湿透的伞靠在门边，没有坐下。</div>
+          <div class="p-note">当前元素：动作描述 · Tab 切换类型 · Enter 智能续行</div>
+        </div>
+
+        <aside class="win-right">
+          <div class="ai-tag">智能体 · 内置工具引擎</div>
+          <div class="ai-input">把便利店这场改成暴雨夜，给女孩加两句克制的对白，并在结尾加一个反转。<span> Ctrl + Enter 执行</span></div>
+          <div class="plan">
+            <div class="plan-head">任务计划 <span>2/3 已完成 · 剩余 1 项</span></div>
+            <ol>
+              <li class="done"><b>✓</b><span>改写开场氛围为暴雨夜</span></li>
+              <li class="done"><b>✓</b><span>补写女孩的克制对白</span></li>
+              <li><b>○</b><span>结尾加入一个反转</span></li>
+            </ol>
+          </div>
+          <div class="ai-steps">
+            <div><b>✓</b> 改写第 3 块：雨敲在玻璃上…</div>
+            <div><b>✓</b> 新增台词：那就在十分钟里…</div>
+            <div class="cont"><b>↻</b> 系统回灌剩余待办，继续推进</div>
+          </div>
+        </aside>
+      </div>
+      <div class="win-status">
+        <span>动作描述</span><span class="sep"></span><span>就绪</span>
+        <span class="right">4 场 · 1,286 字 · 约 3 页</span><span class="sep"></span><span>100%</span><span class="sep"></span><span>v1.0.0</span>
+      </div>
+    </div>
+    <div class="float-badge">finish 由系统验收 · 未完成不会停</div>
+  </section>
+
+  <section class="wrap section" id="features">
+    <div class="sec-head center reveal">
+      <p class="kicker">Built for screenwriters</p>
+      <h2>不是又一个 Markdown 编辑器</h2>
+      <p>从元素类型、封面页到页数估算，编辑器的每个细节都围绕剧本写作，而不是通用文本。</p>
+    </div>
+    <div class="grid">
+      <article class="card reveal"><div class="card-no">01</div><h3>专业剧本排版</h3><p>场景标题、动作、角色、对白、括号提示、转场、分节与备注八类元素；Tab 切换类型，Enter 智能续行，自动保持剧本格式。</p><div class="rule"></div></article>
+      <article class="card reveal"><div class="card-no">02</div><h3>场景大纲与进度</h3><p>自动抽取场景列表并可点击跳转，设定目标页数后实时显示完成比例，抬头就知道写到哪里。</p><div class="rule"></div></article>
+      <article class="card reveal"><div class="card-no">03</div><h3>角色与写作统计</h3><p>自动提取角色名并支持插入正文；统计字数、场数、预估页数、元素分布，并给出节奏提示。</p><div class="rule"></div></article>
+      <article class="card reveal"><div class="card-no">04</div><h3>Fountain 互通</h3><p>导入与导出 .fountain、纯文本及 .screenplay 工程文件，支持粘贴文本解析，可与常见编剧软件交换稿件。</p><div class="rule"></div></article>
+      <article class="card reveal"><div class="card-no">05</div><h3>导出与打印</h3><p>封面单独成页的 A4 PDF 导出、系统打印与工程文件导出，写完即可交付阅读。</p><div class="rule"></div></article>
+      <article class="card reveal"><div class="card-no">06</div><h3>由你定义的工作台</h3><p>纸张颜色、文字颜色、字体、字号、行距与纸张宽度都可调；左右侧栏拖拽改变宽度，双击恢复默认，设置重启后保留。</p><div class="rule"></div></article>
+    </div>
+  </section>
+
+  <section class="wrap section" id="agent">
+    <div class="agent-panel reveal">
+      <div>
+        <p class="kicker">Goal-driven agent</p>
+        <h2>写到一半就停？<br>这次由系统说了算。</h2>
+        <p>普通工具型 Agent 让模型自己宣布「完成」，很容易在整体目标还没达成时收工。剧本工坊把终止权收归系统：模型负责干活，系统负责判断能不能结束。</p>
+        <ol class="flow">
+          <li><span class="flow-no">1</span><div><b>先拆目标</b><span>首轮强制制定任务清单，3–8 个可验收步骤实时显示在 AI 面板。</span></div></li>
+          <li><span class="flow-no">2</span><div><b>持续执行并回灌进度</b><span>工具调用直接改稿、即时可见；每次结果都附带剩余待办。只输出说明文字会被继续追问，上下文过长自动分段续跑。</span></div></li>
+          <li><span class="flow-no">3</span><div><b>系统验收才允许结束</b><span>仍有待办、没有计划或编辑次数不足时，finish 会被拒绝并返回剩余项，任务继续推进。</span></div></li>
+        </ol>
+      </div>
+      <div class="gate">
+        <div class="gate-head"><span>系统验收</span><span>agent / finish</span></div>
+        <div class="gate-msg reject"><b>验收未通过</b>目标尚未达成，还有 1 项待办：结尾加入一个反转。请继续用工具完成，全部标记完成后再调用 finish。</div>
+        <div class="gate-msg pass"><b>目标已验收</b>任务清单 3/3 完成 · 已执行 5 次剧本编辑 · 整体目标已达成。</div>
+        <div class="gate-code"><i>progress</i> { done: 3, total: 3, pending: [], edits: 5 }
+<i>verified</i> true → 允许结束
+<i>继续任务</i> 从上次进度接续，不重做已完成编辑</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="wrap section" id="start">
+    <div class="sec-head reveal">
+      <p class="kicker">Get started</p>
+      <h2>三步，开始写你的下一场戏</h2>
+      <p>需要 Node.js 20+。不配置 AI 也能完整使用编辑、排版、导入导出与统计功能。</p>
+    </div>
+    <div class="start-grid">
+      <div class="code-card reveal">
+        <div class="code-head"><span>Terminal</span><button type="button" data-copy="#cmd-start">复制</button></div>
+        <pre id="cmd-start"><code><span class="c"># 克隆仓库</span>
+git clone https://github.com/456wyc/scriptwriter-studio.git
+cd scriptwriter-studio
+<span class="g">npm install</span>
+<span class="g">npm start</span></code></pre>
+      </div>
+      <ol class="start-list reveal">
+        <li><span class="n">1</span><div><b>准备环境</b><span>安装 Node.js 20 或更高版本，克隆仓库后执行 npm install 安装 Electron 与可选依赖。</span></div></li>
+        <li><span class="n">2</span><div><b>启动编辑器</b><span>npm start 打开桌面应用；npm run dev 会同时打开 DevTools，方便调试界面。</span></div></li>
+        <li><span class="n">3</span><div><b>按需接入 AI</b><span>在「AI 助手 → 配置」填写任意 OpenAI 兼容端点的 Base URL、模型与 API Key；密钥经系统加密保存在本机。</span></div></li>
+      </ol>
+    </div>
+  </section>
+</main>
+
+<footer class="footer">
+  <div class="wrap footer-in">
+    <a class="brand" href="#top"><span class="brand-mark"><i></i><i></i><i></i></span>剧本工坊</a>
+    <nav class="footer-links">
+      <a href="https://github.com/456wyc/scriptwriter-studio">GitHub</a>
+      <a href="https://github.com/456wyc/scriptwriter-studio/releases">下载</a>
+      <a href="https://github.com/456wyc/scriptwriter-studio/blob/main/README.md">文档</a>
+      <a href="https://github.com/456wyc/scriptwriter-studio/blob/main/LICENSE">MIT 许可</a>
+    </nav>
+    <div class="footer-meta"><span>Scriptwriter Studio · 本地优先，剧本属于你自己</span><span>© 2026 · MIT License</span></div>
+  </div>
+</footer>
+
+<script>
+(function(){
+  var items = document.querySelectorAll('.reveal');
+  if ('IntersectionObserver' in window) {
+    var io = new IntersectionObserver(function(entries){
+      entries.forEach(function(e){
+        if (!e.isIntersecting) return;
+        e.target.classList.add('in');
+        io.unobserve(e.target);
+      });
+    }, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
+    items.forEach(function(el, i){
+      el.style.transitionDelay = ((i % 3) * 80) + 'ms';
+      io.observe(el);
+    });
+  } else {
+    items.forEach(function(el){ el.classList.add('in'); });
+  }
+  document.querySelectorAll('[data-copy]').forEach(function(btn){
+    btn.addEventListener('click', async function(){
+      var src = document.querySelector(btn.getAttribute('data-copy'));
+      if (!src) return;
+      try {
+        await navigator.clipboard.writeText(src.textContent.trim());
+        btn.textContent = '已复制';
+      } catch (e) {
+        btn.textContent = '请手动复制';
+      }
+      setTimeout(function(){ btn.textContent = '复制'; }, 1600);
+    });
+  });
+})();
+</script>
+</body>
+</html>

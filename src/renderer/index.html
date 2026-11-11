@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:;">
+  <title>剧本工坊</title>
+  <link rel="stylesheet" href="styles.css?v=10">
+</head>
+<body>
+<svg class="icon-sprite" aria-hidden="true">
+  <symbol id="i-logo" viewBox="0 0 24 24"><path d="M4 4h16v16H4z"/><path d="M4 9h16M9 4l-2 5M15 4l-2 5M8 13h8M8 17h5"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v5h4"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7h6l2 2h10v10H3z"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-chevron" viewBox="0 0 24 24"><path d="M7 10l5 5 5-5"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="M16 16l4 4"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11M7 11l5 5 5-5M4 20h16"/></symbol>
+  <symbol id="i-print" viewBox="0 0 24 24"><path d="M7 8V3h10v5M7 17H4V9h16v8h-3"/><path d="M7 14h10v7H7z"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14A8 8 0 1 1 10 4a7 7 0 0 0 10 10z"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5L19 19M19 5l-1.5 1.5M6.5 17.5L5 19"/></symbol>
+  <symbol id="i-focus" viewBox="0 0 24 24"><path d="M4 9V4h5M20 15v5h-5M20 9V4h-5M4 15v5h5"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12l5 5L19 7"/></symbol>
+  <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><path d="M8 8h12v12H8zM16 8V4H4v12h4"/></symbol>
+  <symbol id="i-scene" viewBox="0 0 24 24"><path d="M3 7h18v12H3zM3 7l3-4h12l3 4M8 12h8M8 15h5"/></symbol>
+  <symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></symbol>
+  <symbol id="i-cmd" viewBox="0 0 24 24"><path d="M9 7a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3v10a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3z"/></symbol>
+  <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 7L4 12l5 5M4 12h10a6 6 0 0 1 0 12" transform="translate(0 -4)"/></symbol>
+  <symbol id="i-keyboard" viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/></symbol>
+</svg>
+
+<div class="app" id="app">
+  <!-- 自绘标题栏 -->
+  <header class="titlebar" id="titlebar">
+    <div class="brand">
+      <span class="brand-mark"><svg class="ic" viewBox="0 0 24 24"><use href="#i-logo" width="24" height="24"/></svg></span>
+      <span class="brand-name">剧本工坊</span>
+      <span class="brand-tag">SCRIPTWRITER</span>
+    </div>
+
+    <div class="doc-switcher">
+      <button class="doc-btn no-drag" id="docBtn" title="切换剧本文档">
+        <svg class="ic" viewBox="0 0 24 24"><use href="#i-file"/></svg>
+        <span id="docName">未命名剧本</span>
+        <span class="dirty-dot" id="dirtyDot"></span>
+        <svg class="ic chev" viewBox="0 0 24 24"><use href="#i-chevron"/></svg>
+      </button>
+      <div class="dropdown doc-menu hidden" id="docMenu">
+        <div class="dropdown-label">我的剧本</div>
+        <div class="doc-list" id="docList"></div>
+        <div class="dropdown-sep"></div>
+        <button class="dropdown-item" data-doc-action="new"><svg class="ic" viewBox="0 0 24 24"><use href="#i-plus"/></svg>新建剧本<span class="kbd">Ctrl+N</span></button>
+        <button class="dropdown-item" data-doc-action="rename">重命名当前剧本</button>
+        <button class="dropdown-item" data-doc-action="duplicate"><svg class="ic" viewBox="0 0 24 24"><use href="#i-copy"/></svg>创建副本</button>
+        <button class="dropdown-item danger" data-doc-action="delete"><svg class="ic" viewBox="0 0 24 24"><use href="#i-trash"/></svg>删除当前剧本</button>
+      </div>
+    </div>
+
+    <div class="save-indicator" id="saveIndicator"><span class="save-dot"></span><span id="saveText">已保存</span></div>
+
+    <div class="titlebar-actions no-drag">
+      <button class="tbtn" id="cmdBtn" title="命令面板 (Ctrl+K)"><svg class="ic" viewBox="0 0 24 24"><use href="#i-cmd"/></svg><span>命令</span></button>
+      <button class="tbtn icon-only" id="themeBtn" title="切换主题"><svg class="ic" viewBox="0 0 24 24"><use href="#i-moon"/></svg></button>
+      <button class="tbtn icon-only" id="focusBtn" title="专注模式 (F11)"><svg class="ic" viewBox="0 0 24 24"><use href="#i-focus"/></svg></button>
+      <button class="tbtn primary" id="quickExportBtn" title="导出剧本"><svg class="ic" viewBox="0 0 24 24"><use href="#i-download"/></svg><span>导出</span></button>
+    </div>
+  </header>
+
+  <!-- 自绘菜单栏 -->
+  <nav class="menubar" id="menubar">
+    <div class="menu-roots">
+      <button class="menu-root" data-menu="file">文件</button>
+      <button class="menu-root" data-menu="edit">编辑</button>
+      <button class="menu-root" data-menu="insert">插入</button>
+      <button class="menu-root" data-menu="view">视图</button>
+      <button class="menu-root" data-menu="export">导出</button>
+      <button class="menu-root" data-menu="ai">AI</button>
+      <button class="menu-root" data-menu="help">帮助</button>
+    </div>
+    <div class="menubar-right">
+      <span class="hint-chip" id="typeChip">动作描述</span>
+      <span class="hint-sep"></span>
+      <span class="menubar-tip">Tab 切换元素 · Enter 智能续行</span>
+    </div>
+  </nav>
+
+  <main class="workspace" id="workspace">
+    <!-- 场景大纲 -->
+    <aside class="sidebar left-sidebar" id="leftSidebar">
+      <div class="side-header">
+        <div class="side-title">场景大纲</div>
+        <span class="pill" id="outlineCount">0</span>
+      </div>
+      <div class="side-toolbar">
+        <div class="search-box"><svg class="ic" viewBox="0 0 24 24"><use href="#i-search"/></svg><input id="outlineSearch" type="text" placeholder="搜索场景 / 地点"></div>
+        <button class="sbtn" id="addSceneBtn" title="新建场景 (Ctrl+Enter)"><svg class="ic" viewBox="0 0 24 24"><use href="#i-plus"/></svg></button>
+      </div>
+      <div class="outline" id="outline"></div>
+      <div class="side-footer">
+        <div class="goal-row"><span>目标页数</span><input id="targetPages" type="number" min="0" max="999" placeholder="—"></div>
+        <div class="progress"><div class="progress-bar" id="progressBar"></div></div>
+        <div class="goal-meta" id="progressText">设定目标，追踪写作进度</div>
+      </div>
+    </aside>
+
+    <!-- 编辑区 -->
+    <section class="editor-area" id="editorArea">
+      <div class="paper-wrap">
+        <div class="paper" id="paper">
+          <div class="title-page" id="titlePage">
+            <div class="cover-label">封面 · 导出 PDF 时独立成页</div>
+            <input class="cover-title" id="metaTitle" type="text" placeholder="剧本标题" spellcheck="false">
+            <div class="cover-line"></div>
+            <div class="cover-fields">
+              <label>编剧 <input id="metaAuthor" type="text" placeholder="署名" spellcheck="false"></label>
+              <label>类型 <input id="metaGenre" type="text" placeholder="剧情 / 喜剧 / 悬疑…" spellcheck="false"></label>
+            </div>
+            <label class="cover-logline">一句话故事
+              <textarea id="metaLogline" rows="2" placeholder="用一句话概括整个故事的核心冲突…" spellcheck="false"></textarea>
+            </label>
+            <div class="cover-foot" id="coverFoot">草稿 · 第 1 稿</div>
+          </div>
+
+          <div class="page-break-hint"><span>剧本正文</span></div>
+          <div class="blocks" id="blocks"></div>
+          <button class="add-block" id="addBlockBtn"><svg class="ic" viewBox="0 0 24 24"><use href="#i-plus"/></svg> 添加内容块</button>
+        </div>
+        <div class="paper-shadow"></div>
+      </div>
+    </section>
+
+    <!-- 角色 / 统计 -->
+    <aside class="sidebar right-sidebar" id="rightSidebar">
+      <div class="side-tabs">
+        <button class="side-tab active" data-tab="chars">角色</button>
+        <button class="side-tab" data-tab="stats">统计</button>
+        <button class="side-tab" data-tab="ai">AI 助手</button>
+      </div>
+
+      <div class="side-panel" id="panelChars">
+        <div class="panel-note">自动从「角色」元素中提取，点击可插入到正文</div>
+        <div class="char-list" id="charList"></div>
+      </div>
+
+      <div class="side-panel hidden" id="panelStats">
+        <div class="stat-grid" id="statGrid"></div>
+        <div class="stat-section-title">元素分布</div>
+        <div class="type-dist" id="typeDist"></div>
+        <div class="stat-section-title">写作提示</div>
+        <div class="stat-advice" id="statAdvice"></div>
+      </div>
+
+      <div class="side-panel ai-panel hidden" id="panelAI">
+        <div class="ai-status">
+          <span class="ai-dot" id="aiDot"></span>
+          <span id="aiModelLabel">未配置模型</span>
+          <button class="ai-config-btn" id="aiConfigBtn">配置</button>
+        </div>
+        <div class="ai-mode-tabs">
+          <button class="ai-mode active" data-ai-mode="agent">智能体 · 直接编辑</button>
+          <button class="ai-mode" data-ai-mode="quick">快捷能力</button>
+        </div>
+
+        <div class="ai-agent-pane" id="aiAgentPane">
+          <div class="ai-engine-row">
+            <span class="ai-engine-label">引擎</span>
+            <select id="aiEngine" aria-label="智能体引擎">
+              <option value="builtin">内置工具引擎 · 通用兼容</option>
+              <option value="deepagents">Deep Agents · 规划型</option>
+            </select>
+          </div>
+          <div class="ai-agent-tip" id="aiEngineTip">工具调用直接改剧本，每一步实时显示在编辑器里。</div>
+          <textarea id="aiAgentInput" class="ai-agent-input" rows="3" spellcheck="false" placeholder="告诉 AI 要直接改动什么，例如：把便利店这场改成暴雨夜，给女孩加两句克制的对白，并在结尾加一个反转"></textarea>
+          <div class="ai-agent-chips">
+            <button class="ai-chip" data-ai-prompt="在结尾新增一场戏，用可视化的动作收束人物关系，并留下一个克制的反转">续写结尾</button>
+            <button class="ai-chip" data-ai-prompt="通读全剧，强化现有冲突：给每个主要角色补一段能体现其诉求的对白">强化冲突</button>
+            <button class="ai-chip" data-ai-prompt="检查全剧节奏，删掉重复啰嗦的动作描述，并把场景标题统一成「INT./EXT. 地点 - 时间」格式">整理节奏</button>
+            <button class="ai-chip" data-ai-prompt="为主角新增一段内心独白，并在此之前插入一个安静的过渡场景">加独白</button>
+          </div>
+          <div class="ai-agent-run">
+            <button class="btn primary" id="aiAgentRun">执行 · 编辑剧本</button>
+            <button class="btn" id="aiAgentResume" title="从上次任务继续，可修改指令后接着做" disabled>继续任务</button>
+            <button class="btn" id="aiAgentClear" title="清空工具调用记录">清空记录</button>
+          </div>
+          <div class="ai-plan hidden" id="aiPlan">
+            <div class="ai-plan-head">任务计划 <span id="aiPlanCount"></span></div>
+            <ol class="ai-plan-list" id="aiPlanList"></ol>
+          </div>
+          <div class="ai-steps hidden" id="aiSteps"></div>
+        </div>
+
+        <div class="ai-quick-pane hidden" id="aiQuickPane">
+          <div class="ai-actions">
+            <button class="ai-action" data-ai="hint"><svg class="ic" viewBox="0 0 24 24"><use href="#i-sun"/></svg><span>智能提示</span></button>
+            <button class="ai-action" data-ai="expand"><svg class="ic" viewBox="0 0 24 24"><use href="#i-plus"/></svg><span>智能扩写</span></button>
+            <button class="ai-action" data-ai="polish"><svg class="ic" viewBox="0 0 24 24"><use href="#i-check"/></svg><span>智能润色</span></button>
+            <button class="ai-action primary" data-ai="write"><svg class="ic" viewBox="0 0 24 24"><use href="#i-logo"/></svg><span>根据设定自动写剧本</span></button>
+          </div>
+          <div class="ai-scope" id="aiScope">作用于当前内容块</div>
+        </div>
+
+        <div class="ai-output" id="aiOutput"><div class="ai-placeholder">输入指令，让智能体直接编辑剧本<br><small>工具调用与生成内容会实时显示</small></div></div>
+        <div class="ai-result-row">
+          <button class="btn" id="aiReplace">替换当前块</button>
+          <button class="btn" id="aiInsert">插入为新块</button>
+          <button class="btn" id="aiCopy">复制</button>
+          <button class="btn danger" id="aiStop">停止生成</button>
+        </div>
+      </div>
+
+      <div class="shortcut-card">
+        <div class="shortcut-head"><svg class="ic" viewBox="0 0 24 24"><use href="#i-keyboard"/></svg> 常用快捷键</div>
+        <div class="shortcut-row"><span>切换元素类型</span><kbd>Tab</kbd></div>
+        <div class="shortcut-row"><span>智能续行</span><kbd>Enter</kbd></div>
+        <div class="shortcut-row"><span>新建场景</span><kbd>Ctrl</kbd><kbd>↵</kbd></div>
+        <div class="shortcut-row"><span>命令面板</span><kbd>Ctrl</kbd><kbd>K</kbd></div>
+        <div class="shortcut-row"><span>保存 / 导出 PDF</span><kbd>Ctrl</kbd><kbd>S / P</kbd></div>
+      </div>
+    </aside>
+    <div class="splitter" data-side="left" title="拖动调整左侧面板宽度 · 双击恢复默认"></div>
+    <div class="splitter" data-side="right" title="拖动调整右侧面板宽度 · 双击恢复默认"></div>
+  </main>
+
+  <footer class="statusbar">
+    <div class="status-left"><span class="status-type" id="statusType">动作描述</span><span class="status-sep"></span><span id="statusHint">就绪</span></div>
+    <div class="status-center" id="statusStats">0 场 · 0 字 · 约 0 页</div>
+    <div class="status-right"><button class="status-link" id="statusLocation" title="点击设置工作目录">存储：默认位置</button><span class="status-sep"></span><button class="status-link" id="statusZoom" title="点击设置纸张颜色、字体、字号与面板宽度">100%</button><span class="status-sep"></span><span id="statusSave">本地自动保存</span><span class="status-sep"></span><span id="statusVersion">v1.0.0</span></div>
+  </footer>
+</div>
+
+<!-- 独立打印视图：导出 PDF 时用纯文本 DOM 精确控制分页 -->
+<div class="print-view" id="printView"></div>
+
+<!-- 浮层 -->
+<div class="menu-popup hidden" id="menuPopup"></div>
+<div class="suggest hidden" id="suggest"></div>
+<div class="toast hidden" id="toast"></div>
+
+<div class="overlay hidden" id="cmdOverlay">
+  <div class="cmd-panel">
+    <div class="cmd-input-wrap"><svg class="ic" viewBox="0 0 24 24"><use href="#i-search"/></svg><input id="cmdInput" type="text" placeholder="输入命令或场景名…" spellcheck="false"><kbd>Esc</kbd></div>
+    <div class="cmd-list" id="cmdList"></div>
+    <div class="cmd-foot"><span>↑↓ 选择</span><span>Enter 执行</span><span>Esc 关闭</span></div>
+  </div>
+</div>
+
+<div class="overlay hidden" id="modalOverlay">
+  <div class="modal">
+    <div class="modal-head"><span id="modalTitle">标题</span><button class="modal-close" id="modalClose"><svg class="ic" viewBox="0 0 24 24"><use href="#i-close"/></svg></button></div>
+    <div class="modal-body" id="modalBody"></div>
+    <div class="modal-actions" id="modalActions"></div>
+  </div>
+</div>
+
+<script src="app.js?v=10"></script>
+</body>
+</html>

@@ -1,0 +1,40 @@
+{
+  "name": "scriptwriter-studio",
+  "productName": "剧本工坊",
+  "version": "1.0.0",
+  "description": "编剧专用桌面编辑器：专业剧本排版、场景大纲、角色管理、Fountain 互通与 PDF 导出",
+  "main": "src/main.js",
+  "author": "Scriptwriter Studio",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "build": "electron-builder --win --x64",
+    "pack": "electron-builder --dir"
+  },
+  "devDependencies": {
+    "electron": "^45.3.0"
+  },
+  "build": {
+    "appId": "com.scriptwriter.studio",
+    "productName": "剧本工坊",
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis",
+      "artifactName": "剧本工坊-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "剧本工坊"
+    }
+  },
+  "dependencies": {
+    "@langchain/openai": "^1.8.3",
+    "deepagents": "^1.16.4"
+  }
+}
