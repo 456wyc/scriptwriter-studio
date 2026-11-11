@@ -2,7 +2,7 @@
 
 > 专为编剧打造的本地优先桌面编辑器：标准剧本排版、场景大纲、角色与台词统计、Fountain 互通、A4 PDF 导出，以及一个**目标驱动、由系统验收**的 AI 编剧智能体。
 
-在线介绍页：<https://456wyc.github.io/scriptwriter-studio/>
+在线介绍页：<https://456wyc.github.io/scriptwriter-studio/> · Windows 预览版：<https://github.com/456wyc/scriptwriter-studio/releases/tag/v1.0.0-preview.1>
 
 基于 Electron 构建，所有剧本保存在本机，无需账号、无需联网即可写作。AI 能力为可选项，接入任意 OpenAI 兼容端点即可启用。
 
@@ -55,11 +55,11 @@ npm start
 npm run dev
 ```
 
-打包脚本 `npm run build`（Windows x64 安装包）与 `npm run pack` 使用 `electron-builder`，需自行安装：
+`electron-builder` 已在 `devDependencies` 中，直接打包即可：
 
 ```bash
-npm i -D electron-builder
-npm run build
+npm run build      # NSIS 安装包 → dist/ScriptwriterStudio-Setup-<version>.exe
+npm run pack       # 免安装目录 → dist/win-unpacked/
 ```
 
 ### 配置 AI（可选）
