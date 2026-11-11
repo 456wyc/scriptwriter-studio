@@ -2,7 +2,7 @@
 
 > 专为编剧打造的本地优先桌面编辑器：标准剧本排版、场景大纲、角色与台词统计、Fountain 互通、A4 PDF 导出，以及一个**目标驱动、由系统验收**的 AI 编剧智能体。
 
-在线介绍页：<https://456wyc.github.io/scriptwriter-studio/> · Windows 预览版：<https://github.com/456wyc/scriptwriter-studio/releases/tag/v1.0.0-preview.2>
+在线介绍页：<https://456wyc.github.io/scriptwriter-studio/> · Windows 预览版：<https://github.com/456wyc/scriptwriter-studio/releases/tag/v1.0.0-preview.1>
 
 基于 Electron 构建，所有剧本保存在本机，无需账号、无需联网即可写作。AI 能力为可选项，接入任意 OpenAI 兼容端点即可启用。
 
