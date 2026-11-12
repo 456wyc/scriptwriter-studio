@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:;">
   <title>剧本工坊</title>
-  <link rel="stylesheet" href="styles.css?v=11">
+  <link rel="stylesheet" href="styles.css?v=12">
 </head>
 <body>
 <svg class="icon-sprite" aria-hidden="true">
@@ -28,6 +28,11 @@
   <symbol id="i-cmd" viewBox="0 0 24 24"><path d="M9 7a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3v10a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3z"/></symbol>
   <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 7L4 12l5 5M4 12h10a6 6 0 0 1 0 12" transform="translate(0 -4)"/></symbol>
   <symbol id="i-keyboard" viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/></symbol>
+  <symbol id="i-chat" viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5"/></symbol>
+  <symbol id="i-send" viewBox="0 0 24 24"><path d="M3 11l18-8-8 18-2-8z"/><path d="M11 13l10-10"/></symbol>
+  <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4l11-11-4-4L4 16z"/><path d="M14 6l4 4"/></symbol>
+  <symbol id="i-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></symbol>
+  <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M18 16l.8 2.2L21 19l-2.2.8L18 22l-.8-2.2L15 19l2.2-.8z"/></symbol>
 </svg>
 
 <div class="app" id="app">
@@ -152,60 +157,100 @@
       </div>
 
       <div class="side-panel ai-panel hidden" id="panelAI">
+        <div class="ai-session-bar">
+          <button class="ai-session-toggle" id="aiSessionsToggle" title="会话列表 · 关闭程序后仍可继续">
+            <svg class="ic" viewBox="0 0 24 24"><use href="#i-chat"/></svg>
+            <span id="aiSessionTitle">新会话</span>
+            <span class="ai-session-count" id="aiSessionCount">1</span>
+            <svg class="ic chev" viewBox="0 0 24 24"><use href="#i-chevron"/></svg>
+          </button>
+          <button class="ai-icon-btn" id="aiSessionNew" title="新建会话"><svg class="ic" viewBox="0 0 24 24"><use href="#i-plus"/></svg></button>
+          <button class="ai-icon-btn" id="aiConfigBtn" title="模型配置"><svg class="ic" viewBox="0 0 24 24"><use href="#i-cmd"/></svg></button>
+        </div>
+
+        <div class="ai-session-drawer hidden" id="aiSessionDrawer">
+          <div class="ai-session-drawer-head"><span>会话记录</span><span>保存在本机 · 可跨重启继续</span></div>
+          <div class="ai-session-search"><svg class="ic" viewBox="0 0 24 24"><use href="#i-search"/></svg><input id="aiSessionSearch" type="text" placeholder="搜索会话或消息…"></div>
+          <div class="ai-session-list" id="aiSessionList"></div>
+        </div>
+
         <div class="ai-status">
           <span class="ai-dot" id="aiDot"></span>
           <span id="aiModelLabel">未配置模型</span>
-          <button class="ai-config-btn" id="aiConfigBtn">配置</button>
         </div>
+
         <div class="ai-mode-tabs">
           <button class="ai-mode active" data-ai-mode="agent">智能体 · 直接编辑</button>
           <button class="ai-mode" data-ai-mode="quick">快捷能力</button>
         </div>
 
-        <div class="ai-agent-pane" id="aiAgentPane">
-          <div class="ai-engine-row">
-            <span class="ai-engine-label">引擎</span>
-            <select id="aiEngine" aria-label="智能体引擎">
-              <option value="builtin">内置工具引擎 · 通用兼容</option>
-              <option value="deepagents">Deep Agents · 规划型</option>
-            </select>
+        <div class="ai-messages" id="aiMessages">
+          <div class="ai-welcome" id="aiWelcome">
+            <div class="ai-welcome-mark"><svg class="ic" viewBox="0 0 24 24"><use href="#i-spark"/></svg></div>
+            <div class="ai-welcome-title">和 AI 一起写这场戏</div>
+            <div class="ai-welcome-sub">描述目标，智能体会规划、拆解并直接修改剧本。<br>会话自动保存在本机，下次打开可以接着聊。</div>
+            <div class="ai-welcome-tips"><span>改写场景</span><span>补对白</span><span>整理节奏</span><span>续写结尾</span></div>
           </div>
-          <div class="ai-agent-tip" id="aiEngineTip">工具调用直接改剧本，每一步实时显示在编辑器里。</div>
-          <textarea id="aiAgentInput" class="ai-agent-input" rows="3" spellcheck="false" placeholder="告诉 AI 要直接改动什么，例如：把便利店这场改成暴雨夜，给女孩加两句克制的对白，并在结尾加一个反转"></textarea>
-          <div class="ai-agent-chips">
-            <button class="ai-chip" data-ai-prompt="在结尾新增一场戏，用可视化的动作收束人物关系，并留下一个克制的反转">续写结尾</button>
-            <button class="ai-chip" data-ai-prompt="通读全剧，强化现有冲突：给每个主要角色补一段能体现其诉求的对白">强化冲突</button>
-            <button class="ai-chip" data-ai-prompt="检查全剧节奏，删掉重复啰嗦的动作描述，并把场景标题统一成「INT./EXT. 地点 - 时间」格式">整理节奏</button>
-            <button class="ai-chip" data-ai-prompt="为主角新增一段内心独白，并在此之前插入一个安静的过渡场景">加独白</button>
-          </div>
-          <div class="ai-agent-run">
-            <button class="btn primary" id="aiAgentRun">执行 · 编辑剧本</button>
-            <button class="btn" id="aiAgentResume" title="从上次任务继续，可修改指令后接着做" disabled>继续任务</button>
-            <button class="btn" id="aiAgentClear" title="清空工具调用记录">清空记录</button>
-          </div>
-          <div class="ai-plan hidden" id="aiPlan">
-            <div class="ai-plan-head">任务计划 <span id="aiPlanCount"></span></div>
-            <ol class="ai-plan-list" id="aiPlanList"></ol>
-          </div>
-          <div class="ai-steps hidden" id="aiSteps"></div>
+          <div class="ai-output hidden" id="aiOutput"><div class="ai-placeholder">正在生成…<br><small>内容会实时出现在这里</small></div></div>
         </div>
 
-        <div class="ai-quick-pane hidden" id="aiQuickPane">
-          <div class="ai-actions">
-            <button class="ai-action" data-ai="hint"><svg class="ic" viewBox="0 0 24 24"><use href="#i-sun"/></svg><span>智能提示</span></button>
-            <button class="ai-action" data-ai="expand"><svg class="ic" viewBox="0 0 24 24"><use href="#i-plus"/></svg><span>智能扩写</span></button>
-            <button class="ai-action" data-ai="polish"><svg class="ic" viewBox="0 0 24 24"><use href="#i-check"/></svg><span>智能润色</span></button>
-            <button class="ai-action primary" data-ai="write"><svg class="ic" viewBox="0 0 24 24"><use href="#i-logo"/></svg><span>根据设定自动写剧本</span></button>
+        <div class="ai-live hidden" id="aiLive">
+          <div class="ai-live-head">
+            <span class="ai-live-title"><span class="ai-live-pulse"></span><span id="aiLiveTitle">正在执行…</span></span>
+            <button class="ai-live-toggle" id="aiLiveToggle" title="折叠 / 展开执行过程"><svg class="ic" viewBox="0 0 24 24"><use href="#i-chevron"/></svg></button>
           </div>
-          <div class="ai-scope" id="aiScope">作用于当前内容块</div>
+          <div class="ai-live-body" id="aiLiveBody">
+            <div class="ai-plan hidden" id="aiPlan">
+              <div class="ai-plan-head">任务计划 <span id="aiPlanCount"></span></div>
+              <ol class="ai-plan-list" id="aiPlanList"></ol>
+            </div>
+            <div class="ai-steps hidden" id="aiSteps"></div>
+          </div>
         </div>
 
-        <div class="ai-output" id="aiOutput"><div class="ai-placeholder">输入指令，让智能体直接编辑剧本<br><small>工具调用与生成内容会实时显示</small></div></div>
-        <div class="ai-result-row">
-          <button class="btn" id="aiReplace">替换当前块</button>
-          <button class="btn" id="aiInsert">插入为新块</button>
-          <button class="btn" id="aiCopy">复制</button>
-          <button class="btn danger" id="aiStop">停止生成</button>
+        <div class="ai-composer">
+          <div class="ai-agent-pane" id="aiAgentPane">
+            <div class="ai-agent-chips">
+              <button class="ai-chip" data-ai-prompt="在结尾新增一场戏，用可视化的动作收束人物关系，并留下一个克制的反转">续写结尾</button>
+              <button class="ai-chip" data-ai-prompt="通读全剧，强化现有冲突：给每个主要角色补一段能体现其诉求的对白">强化冲突</button>
+              <button class="ai-chip" data-ai-prompt="检查全剧节奏，删掉重复啰嗦的动作描述，并把场景标题统一成「INT./EXT. 地点 - 时间」格式">整理节奏</button>
+              <button class="ai-chip" data-ai-prompt="为主角新增一段内心独白，并在此之前插入一个安静的过渡场景">加独白</button>
+            </div>
+          </div>
+
+          <div class="ai-quick-pane hidden" id="aiQuickPane">
+            <div class="ai-actions">
+              <button class="ai-action" data-ai="hint"><svg class="ic" viewBox="0 0 24 24"><use href="#i-sun"/></svg><span>智能提示</span></button>
+              <button class="ai-action" data-ai="expand"><svg class="ic" viewBox="0 0 24 24"><use href="#i-plus"/></svg><span>智能扩写</span></button>
+              <button class="ai-action" data-ai="polish"><svg class="ic" viewBox="0 0 24 24"><use href="#i-check"/></svg><span>智能润色</span></button>
+              <button class="ai-action primary" data-ai="write"><svg class="ic" viewBox="0 0 24 24"><use href="#i-logo"/></svg><span>根据设定自动写剧本</span></button>
+            </div>
+            <div class="ai-scope" id="aiScope">作用于当前内容块</div>
+          </div>
+
+          <div class="ai-composer-box">
+            <textarea id="aiAgentInput" class="ai-agent-input" rows="2" spellcheck="false" placeholder="告诉 AI 要改动什么… 例如：把便利店这场改成暴雨夜，给女孩加两句克制的对白"></textarea>
+            <div class="ai-composer-bar">
+              <select id="aiEngine" aria-label="智能体引擎">
+                <option value="builtin">内置工具引擎 · 通用兼容</option>
+                <option value="deepagents">Deep Agents · 规划型</option>
+              </select>
+              <button class="ai-send" id="aiAgentRun" title="发送指令 (Ctrl+Enter)"><svg class="ic" viewBox="0 0 24 24"><use href="#i-send"/></svg></button>
+            </div>
+            <div class="ai-agent-tip" id="aiEngineTip">工具调用直接改剧本，每一步实时显示在编辑器里。</div>
+          </div>
+
+          <div class="ai-composer-foot">
+            <button class="ai-foot-btn" id="aiAgentResume" title="从当前会话的进度继续，可修改指令后接着做" disabled><svg class="ic" viewBox="0 0 24 24"><use href="#i-undo"/></svg>继续任务</button>
+            <button class="ai-foot-btn" id="aiAgentClear" title="清空当前会话的消息与进度"><svg class="ic" viewBox="0 0 24 24"><use href="#i-trash"/></svg>清空会话</button>
+            <button class="ai-foot-btn danger" id="aiStop" title="停止当前生成"><svg class="ic" viewBox="0 0 24 24"><use href="#i-stop"/></svg>停止</button>
+          </div>
+
+          <div class="ai-result-row">
+            <button class="btn" id="aiReplace">替换当前块</button>
+            <button class="btn" id="aiInsert">插入为新块</button>
+            <button class="btn" id="aiCopy">复制</button>
+          </div>
         </div>
       </div>
 
@@ -253,6 +298,6 @@
   </div>
 </div>
 
-<script src="app.js?v=11"></script>
+<script src="app.js?v=12"></script>
 </body>
 </html>

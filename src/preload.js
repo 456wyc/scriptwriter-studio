@@ -10,7 +10,7 @@ contextBridge.exposeInMainWorld('desktop', {
   flushLibrary: () => ipcRenderer.invoke('library:flush'),
   openFile: () => ipcRenderer.invoke('file:open'),
   saveFile: (options) => ipcRenderer.invoke('file:save', options),
-  exportPDF: () => ipcRenderer.invoke('pdf:export'),
+  exportPDF: (options) => ipcRenderer.invoke('pdf:export', options),
   print: () => ipcRenderer.invoke('app:print'),
   setTitle: (title) => ipcRenderer.invoke('win:title', title),
   setDirty: (dirty) => ipcRenderer.invoke('win:dirty', dirty),
@@ -29,6 +29,8 @@ contextBridge.exposeInMainWorld('desktop', {
     run: (payload) => ipcRenderer.invoke('ai:run', payload),
     stop: () => ipcRenderer.invoke('ai:stop'),
     agent: (payload) => ipcRenderer.invoke('ai:agent', payload),
+    inline: (payload) => ipcRenderer.invoke('ai:inline', payload),
+    inlineStop: () => ipcRenderer.invoke('ai:inline:stop'),
     onChunk: (cb) => {
       if (globalThis.__aiChunkHandler) ipcRenderer.removeListener('ai:chunk', globalThis.__aiChunkHandler);
       globalThis.__aiChunkHandler = (_event, text) => cb(text);
@@ -52,6 +54,10 @@ contextBridge.exposeInMainWorld('desktop', {
       globalThis.__aiPlanHandler = (_event, steps) => cb(steps);
       ipcRenderer.on('ai:plan', globalThis.__aiPlanHandler);
       return true;
+    },
+    sessions: {
+      load: () => ipcRenderer.invoke('ai:sessions:load'),
+      save: (store) => ipcRenderer.invoke('ai:sessions:save', store)
     }
   },
   minimize: () => ipcRenderer.invoke('window:minimize'),

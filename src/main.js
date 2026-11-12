@@ -365,11 +365,25 @@ ipcMain.handle('file:save', async (_event, options) => {
   }
 });
 
-ipcMain.handle('pdf:export', async () => {
+function exportDateStamp() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function pdfDefaultName() {
+  const s = cache?.scripts?.find(x => x.id === cache.activeId) || cache?.scripts?.[0];
+  return `${safeName(s?.title || '剧本')}_${exportDateStamp()}.pdf`;
+}
+
+ipcMain.handle('pdf:export', async (_event, options = {}) => {
   if (!win) return { canceled: true };
+  // 渲染端统一生成「剧本名_日期.pdf」；旧调用或异常入名时回退到主进程按当前剧本生成
+  const raw = typeof options?.defaultName === 'string' ? path.basename(options.defaultName) : '';
+  const defaultName = raw && raw.length <= 120 && /\.pdf$/i.test(raw) && !/[\\/:*?"<>|]/.test(raw)
+    ? raw : pdfDefaultName();
   const result = await dialog.showSaveDialog(win, {
     title: '导出为 PDF',
-    defaultPath: path.join(exportDir(), '剧本.pdf'),
+    defaultPath: path.join(exportDir(), defaultName),
     filters: [{ name: 'PDF 文档', extensions: ['pdf'] }]
   });
   if (result.canceled || !result.filePath) return { canceled: true };
@@ -603,6 +617,61 @@ ipcMain.handle('ai:run', async (event, payload) => {
 ipcMain.handle('ai:stop', () => {
   aiStopped = true;
   if (aiController) { try { aiController.abort(); } catch {} }
+  return true;
+});
+
+/* -------- 行内 AI：针对单个内容块的就地改写，独立控制器避免中断智能体 -------- */
+let inlineAiController = null;
+const inlineShort = (v, n) => String(v ?? '').slice(0, n);
+const inlineRole = (r) => (r === 'assistant' ? 'assistant' : (r === 'system' ? 'system' : 'user'));
+
+async function inlineAiRequest(messages, { temperature, maxTokens } = {}) {
+  const cfg = await readAiConfig();
+  if (!cfg.apiKey) throw new Error('尚未配置 API Key，请先在「AI → 模型配置」中填写');
+  if (!cfg.baseUrl) throw new Error('尚未配置接口地址 Base URL');
+  if (!cfg.model) throw new Error('尚未配置模型名称');
+  if (inlineAiController) { try { inlineAiController.abort(); } catch {} }
+  inlineAiController = new AbortController();
+  const signals = [inlineAiController.signal];
+  if (typeof AbortSignal.timeout === 'function') signals.push(AbortSignal.timeout(120000));
+  const signal = typeof AbortSignal.any === 'function' ? AbortSignal.any(signals) : inlineAiController.signal;
+  const res = await fetch(`${cfg.baseUrl}/chat/completions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${cfg.apiKey}` },
+    body: JSON.stringify({
+      model: cfg.model, messages, stream: false,
+      temperature: typeof temperature === 'number' ? temperature : cfg.temperature,
+      max_tokens: Math.min(4096, Math.max(256, Number(maxTokens) || 1024))
+    }),
+    signal
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    throw new Error(`接口返回 ${res.status} ${res.statusText}${detail ? ' — ' + detail.slice(0, 200) : ''}`);
+  }
+  const data = await res.json();
+  return data.choices?.[0]?.message?.content || '';
+}
+
+ipcMain.handle('ai:inline', async (_event, payload = {}) => {
+  try {
+    const messages = (Array.isArray(payload.messages) ? payload.messages : [])
+      .slice(-16).map(m => (m && typeof m === 'object'
+        ? { role: inlineRole(m.role), content: inlineShort(m.content, 8000) }
+        : null)).filter(m => m && m.content);
+    if (!messages.length) return { ok: false, error: '请输入改写指令' };
+    const text = await inlineAiRequest(messages, {
+      temperature: payload.temperature, maxTokens: payload.maxTokens
+    });
+    return { ok: true, text: inlineShort(text, 12000) };
+  } catch (err) {
+    if (err && err.name === 'AbortError') return { ok: true, text: '', stopped: true };
+    return { ok: false, error: String(err?.message || err) };
+  }
+});
+
+ipcMain.handle('ai:inline:stop', () => {
+  if (inlineAiController) { try { inlineAiController.abort(); } catch {} }
   return true;
 });
 
@@ -970,7 +1039,7 @@ async function runBuiltinAgent({ cfg, instruction, lib, event, signal, prior }) 
   return { text: state.text, lib, ...state, progress: agentProgress(state) };
 }
 
-ipcMain.handle('ai:agent', async (event, payload) => {
+ipcMain.handle('ai:agent', async (event, payload = {}) => {
   let lib = null;
   aiLibraryLocked = true;
   try {
@@ -983,7 +1052,8 @@ ipcMain.handle('ai:agent', async (event, payload) => {
     if (aiController) { try { aiController.abort(); } catch {} }
     aiController = new AbortController();
     lib = cache;
-    const prior = payload.resume ? agentLastSession : null;
+    // 续跑优先使用渲染端会话里持久化的 prior：进程重启后内存中的 agentLastSession 已丢失
+    const prior = payload.resume ? (normalizeAgentPrior(payload.prior) || agentLastSession) : null;
     const instruction = String(payload.instruction || prior?.instruction || '');
     if (!instruction) return { ok: false, error: '请输入任务指令' };
     const snapshot = JSON.stringify(lib.scripts);
@@ -1037,7 +1107,7 @@ ipcMain.handle('ai:agent', async (event, payload) => {
       ok: true, text: result.text, library: lib, stopped: aiStopped,
       truncated: Boolean(result.truncated) && !result.verified,
       verified: Boolean(result.verified), steps: result.steps.length,
-      plan: result.plan, progress
+      plan: result.plan, progress, prior: normalizeAgentPrior(agentLastSession)
     };
   } catch (err) {
     if (lib) { cache = lib; try { persistLibrary(lib); } catch {} }
@@ -1134,3 +1204,95 @@ async function runDeepAgent({ cfg, instruction, lib, event, signal, state }) {
     done: verified, verified, truncated: !verified, progress: pg
   };
 }
+
+/* ------------------- AI 会话持久化：消息 / 计划 / 续跑状态 ------------------- */
+const AI_SESSIONS_VERSION = 1;
+const AI_LIMITS = { sessions: 60, messages: 160, steps: 120, plan: 40, text: 20000, title: 80 };
+const aiSessionsFile = () => path.join(userDir(), 'ai-sessions.json');
+const aiShort = (v, max) => String(v ?? '').slice(0, max);
+
+function normalizeAgentPrior(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  return {
+    instruction: aiShort(raw.instruction, 4000),
+    plan: normalizeAgentPlan(raw.plan).slice(-AI_LIMITS.plan)
+      .map(p => ({ title: aiShort(p.title, 300), done: Boolean(p.done) })),
+    steps: (Array.isArray(raw.steps) ? raw.steps : []).slice(-AI_LIMITS.steps)
+      .map(s => aiShort(typeof s === 'string' ? s : s?.summary, 400)).filter(Boolean),
+    toolCalls: Number(raw.toolCalls) || 0,
+    editCount: Number(raw.editCount) || 0,
+    verified: Boolean(raw.verified),
+    engine: raw.engine === 'deepagents' ? 'deepagents' : 'builtin'
+  };
+}
+
+function normalizeAiPlanItems(raw) {
+  return (Array.isArray(raw) ? raw : []).slice(-AI_LIMITS.plan).map(p => (typeof p === 'string'
+    ? { title: aiShort(p, 300), done: false }
+    : { title: aiShort(p?.title, 300), done: Boolean(p?.done) })).filter(p => p.title);
+}
+
+function normalizeAiStepItems(raw) {
+  return (Array.isArray(raw) ? raw : []).slice(-AI_LIMITS.steps).map(s => (typeof s === 'string'
+    ? { no: 0, ok: true, summary: aiShort(s, 400) }
+    : { no: Number(s?.no) || 0, ok: s?.ok !== false, summary: aiShort(s?.summary, 400) }))
+    .filter(s => s.summary);
+}
+
+function normalizeAiSessionMessage(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const role = raw.role === 'user' ? 'user' : (raw.role === 'assistant' ? 'assistant' : null);
+  if (!role) return null;
+  const type = raw.type === 'run' ? 'run' : 'text';
+  const msg = {
+    id: aiShort(raw.id, 40) || uidMain(),
+    role, type,
+    text: aiShort(raw.text, type === 'text' ? AI_LIMITS.text : 4000),
+    at: Number(raw.at) || Date.now(),
+    mode: aiShort(raw.mode, 24),
+    engine: aiShort(raw.engine, 24),
+    error: Boolean(raw.error)
+  };
+  if (type === 'run') {
+    msg.steps = normalizeAiStepItems(raw.steps);
+    msg.plan = normalizeAiPlanItems(raw.plan);
+    msg.verified = Boolean(raw.verified);
+  }
+  return msg;
+}
+
+function normalizeAiSessionStore(raw) {
+  const store = { version: AI_SESSIONS_VERSION, activeId: '', sessions: [] };
+  if (!raw || typeof raw !== 'object') return store;
+  store.sessions = (Array.isArray(raw.sessions) ? raw.sessions : [])
+    .slice(-AI_LIMITS.sessions).map(s => {
+      if (!s || typeof s !== 'object') return null;
+      return {
+        id: aiShort(s.id, 40) || uidMain(),
+        title: aiShort(s.title, AI_LIMITS.title) || '新会话',
+        createdAt: Number(s.createdAt) || Date.now(),
+        updatedAt: Number(s.updatedAt) || Date.now(),
+        scriptId: aiShort(s.scriptId, 40),
+        scriptTitle: aiShort(s.scriptTitle, 80),
+        engine: aiShort(s.engine, 24) || 'builtin',
+        messages: (Array.isArray(s.messages) ? s.messages : [])
+          .slice(-AI_LIMITS.messages).map(normalizeAiSessionMessage).filter(Boolean),
+        prior: normalizeAgentPrior(s.prior)
+      };
+    }).filter(Boolean);
+  const last = store.sessions[store.sessions.length - 1];
+  store.activeId = store.sessions.some(s => s.id === raw.activeId) ? raw.activeId : (last ? last.id : '');
+  return store;
+}
+
+ipcMain.handle('ai:sessions:load', () => normalizeAiSessionStore(readJson(aiSessionsFile())));
+
+ipcMain.handle('ai:sessions:save', (_event, payload) => {
+  try {
+    const store = normalizeAiSessionStore(payload);
+    writeAtomic(aiSessionsFile(), JSON.stringify(store));
+    return { ok: true, savedAt: Date.now() };
+  } catch (err) {
+    return { ok: false, error: String(err?.message || err) };
+  }
+});
