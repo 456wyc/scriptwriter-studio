@@ -69,7 +69,8 @@
     sessions: {
       load: () => desktop.ai.sessions.load(),
       save: (store) => desktop.ai.sessions.save(store)
-    }
+    },
+    pickFiles: () => desktop.ai.pickFiles()
   } : {
     getConfig: () => Promise.resolve(null),
     saveConfig: () => Promise.resolve({ ok: false, error: 'AI 能力仅在桌面版可用' }),
@@ -538,19 +539,20 @@
     const prev = document.activeElement;
     const inlineFocused = Boolean(prev && prev.classList && prev.classList.contains('inline-ai-input'));
     const inlineSel = inlineFocused ? [prev.selectionStart, prev.selectionEnd] : null;
-    let anchorWrap = null, anchorBlock = null;
+    let anchorWrap = null, anchorBlock = null, sceneNo = 0;
     host.replaceChildren();
     for (const b of blocks()) {
       const wrap = document.createElement('div');
       wrap.className = 'block' + (b.id === activeId ? ' active' : '');
       wrap.dataset.id = b.id;
       wrap.dataset.type = b.type;
+      if (b.type === 'scene') { sceneNo++; wrap.dataset.sceneNo = sceneNo; }
 
       const badge = document.createElement('button');
       badge.className = 'type-badge';
       badge.dataset.badge = b.id;
       badge.type = 'button';
-      badge.textContent = TYPES[b.type].label + ' ▾';
+      badge.textContent = (lib.settings.scriptFormat === 'cn' && b.type === 'scene' ? '第' + sceneNo + '场' : TYPES[b.type].label) + ' ▾';
 
       const ta = document.createElement('textarea');
       ta.className = 'block-input';
@@ -569,7 +571,14 @@
       aiBtn.disabled = Boolean(aiState.busy);
       aiBtn.innerHTML = '<svg class="ic" viewBox="0 0 24 24"><use href="#i-spark"/></svg>';
 
-      wrap.append(badge, ta, aiBtn);
+      const addBtn = document.createElement('button');
+      addBtn.className = 'block-add';
+      addBtn.dataset.addBefore = b.id;
+      addBtn.type = 'button';
+      addBtn.title = '在此块前插入新块';
+      addBtn.innerHTML = '<svg class="ic" viewBox="0 0 24 24"><use href="#i-plus"/></svg>';
+
+      wrap.append(addBtn, badge, ta, aiBtn);
       host.appendChild(wrap);
       if (inlineAi.blockId === b.id) { wrap.classList.add('ai-open'); anchorWrap = wrap; anchorBlock = b; }
       autoHeight(ta);
@@ -684,8 +693,20 @@
   }
 
   function appendTypedBlock(type) {
-    const id = activeId || blocks()[blocks().length - 1].id;
-    insertBlock(id, type);
+    insertBlock(null, type);
+  }
+
+  function insertBeforeBlock(beforeId, type = 'action', text = '') {
+    beginChange();
+    const arr = blocks();
+    let idx = arr.findIndex(b => b.id === beforeId);
+    if (idx < 0) idx = arr.length;
+    const nb = newBlock(type, text);
+    arr.splice(idx, 0, nb);
+    changed(true);
+    focusBlock(nb.id);
+    scrollToBlock(nb.id);
+    return nb;
   }
 
   /* ------------------------------ 统计 / 侧栏 ------------------------------ */
@@ -999,6 +1020,24 @@
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       closeSuggest();
+      if (lib.settings.scriptFormat === 'cn' && b.type === 'action') {
+        const txt = ta.value.trim();
+        let sm;
+        if (/^第\s*[0-9一二三四五六七八九十百千]+\s*场/.test(txt) || /^场景[：:]/.test(txt) || /^(内景|外景|内外景)[·\s]/.test(txt)) {
+          const t2 = txt.replace(/^第\s*[0-9一二三四五六七八九十百千]+\s*场\s*/, '').replace(/^场景[：:]\s*/, '');
+          b.text = sceneFromCN(t2);
+          changeType(id, 'scene');
+          return;
+        }
+        if ((sm = txt.match(/^([一-龥A-Za-z]{1,8})[：:]\s*(.+)$/))) {
+          beginChange();
+          b.type = 'character'; b.text = sm[1].trim();
+          const d = newBlock('dialogue', sm[2].trim());
+          const arr = blocks(); arr.splice(arr.indexOf(b) + 1, 0, d);
+          changed(true); focusBlock(d.id);
+          return;
+        }
+      }
       const start = ta.selectionStart, end = ta.selectionEnd;
       const text = ta.value;
       if (!text.trim()) {
@@ -1161,6 +1200,86 @@
     return out.join('\n').replace(/\n{3,}/g, '\n\n').trim() + '\n';
   }
 
+  function sceneCN(text) {
+    let t = String(text || '').trim().replace(/\s*[-–—]\s*/g, '·');
+    if (/^int\.?\s*/i.test(t)) t = '内景·' + t.replace(/^int\.?\s*/i, '');
+    else if (/^ext\.?\s*/i.test(t)) t = '外景·' + t.replace(/^ext\.?\s*/i, '');
+    return t;
+  }
+
+  function sceneFromCN(text) {
+    let t = String(text || '').trim();
+    if (/^内景/.test(t)) t = 'INT. ' + t.replace(/^内景[·\s]*/, '').replace(/·/g, ' - ');
+    else if (/^外景/.test(t)) t = 'EXT. ' + t.replace(/^外景[·\s]*/, '').replace(/·/g, ' - ');
+    return t;
+  }
+
+  function toScriptCN(s) {
+    const lines = [];
+    if (s.title) lines.push(`《${s.title}》`);
+    if (s.author) lines.push(`编剧：${s.author}`);
+    if (s.genre) lines.push(`类型：${s.genre}`);
+    let sceneNo = 0;
+    for (const b of s.blocks) {
+      const t = b.text.trim();
+      if (!t) continue;
+      if (b.type === 'note') continue;
+      if (['scene', 'action', 'transition', 'section'].includes(b.type)) lines.push('');
+      switch (b.type) {
+        case 'scene': sceneNo++; lines.push(`第${sceneNo}场　${sceneCN(t)}`); break;
+        case 'action': lines.push(t); break;
+        case 'character': lines.push(t); break;
+        case 'dialogue': lines.push('　　' + t); break;
+        case 'parenthetical': lines.push('　　（' + t.replace(/^[（(]|[）)]$/g, '') + '）'); break;
+        case 'transition': lines.push(t); break;
+        case 'section': lines.push(`【${t}】`); break;
+      }
+    }
+    return lines.join('\n').replace(/\n{3,}/g, '\n\n').replace(/^\n+/, '').trim() + '\n';
+  }
+
+  function looksLikeCN(text) {
+    return /第\s*[0-9一二三四五六七八九十百千]+\s*场/.test(text) ||
+      /编剧[：:]/i.test(text) ||
+      /^\s*《.+》\s*$/m.test(text);
+  }
+
+  function detectFormat(text, fmt) {
+    if (fmt && fmt !== 'auto') return fmt;
+    return looksLikeCN(text) ? 'cn' : 'fountain';
+  }
+
+  function parseScriptCN(text) {
+    const lines = String(text || '').replace(/\r\n?/g, '\n').split('\n');
+    const meta = { title: '', author: '', genre: '', logline: '' };
+    const blocks = [];
+    const push = (type, txt) => { if (txt != null) blocks.push({ type, text: txt }); };
+    const n = lines.length;
+    let i = 0;
+    while (i < n) {
+      const raw = lines[i];
+      const line = raw.trim();
+      if (!line) { i++; continue; }
+      let m;
+      if ((m = line.match(/^\s*《(.+?)》\s*$/))) { if (!meta.title) meta.title = m[1]; i++; continue; }
+      if ((m = line.match(/^编剧[：:]\s*(.+)$/))) { meta.author = m[1].trim(); i++; continue; }
+      if ((m = line.match(/^类型[：:]\s*(.+)$/))) { meta.genre = m[1].trim(); i++; continue; }
+      if ((m = line.match(/^\s*[#＊*]\s*(.+)$/))) { push('section', m[1].trim()); i++; continue; }
+      if (/^[【〔].+[】〕]$/.test(line) && !/^[【〔]\s*[场景场]/.test(line)) { push('section', line.replace(/^[【〔]|[】〕]$/g, '')); i++; continue; }
+      if (/^第\s*[0-9一二三四五六七八九十百千]+\s*场/.test(line) || /^\s*场景[：:]/i.test(line)) {
+        const t = line.replace(/^第\s*[0-9一二三四五六七八九十百千]+\s*场\s*/, '').replace(/^\s*场景[：:]\s*/i, '').trim();
+        push('scene', sceneFromCN(t)); i++; continue;
+      }
+      if (/^[（(].+[）)]$/.test(line) && !/[：:]/.test(line)) { push('parenthetical', line.replace(/^[（(]|[）)]$/g, '')); i++; continue; }
+      if ((m = line.match(/^(.+?)[：:](.+)$/))) { push('character', m[1].trim()); push('dialogue', m[2].trim()); i++; continue; }
+      if (i + 1 < n && lines[i + 1].match(/^\s{2,}/) && !raw.match(/^\s{2,}/)) {
+        push('character', line); push('dialogue', lines[i + 1].replace(/^\s+/, '')); i += 2; continue;
+      }
+      push('action', line); i++;
+    }
+    return { meta, blocks };
+  }
+
   function toProject(s) {
     return JSON.stringify({ format: 'scriptwriter.screenplay', version: 1, exportedAt: new Date().toISOString(), ...s }, null, 2);
   }
@@ -1188,6 +1307,9 @@
     if (kind === 'fountain') {
       content = toFountain(s); name = base + '.fountain';
       filters = [{ name: 'Fountain 剧本', extensions: ['fountain'] }, { name: '所有文件', extensions: ['*'] }];
+    } else if (kind === 'cn') {
+      content = toScriptCN(s); name = base + '.txt';
+      filters = [{ name: '国内剧本格式', extensions: ['txt'] }, { name: '所有文件', extensions: ['*'] }];
     } else if (kind === 'txt') {
       content = toPlainText(s); name = base + '.txt';
       filters = [{ name: '纯文本', extensions: ['txt'] }, { name: '所有文件', extensions: ['*'] }];
@@ -1240,13 +1362,14 @@
         }
       } catch { /* 按纯文本处理 */ }
     }
-    const parsed = parseFountain(f.content);
+    const parsed = (/\.txt$/i.test(f.name) && looksLikeCN(f.content)) ? parseScriptCN(f.content) : parseFountain(f.content);
     addImportedScript(parsed.meta.title || name, parsed.blocks, parsed.meta);
   }
 
-  function importFromPaste(text) {
+  function importFromPaste(text, fmt) {
     if (!text.trim()) { toast('请先粘贴内容', true); return; }
-    const parsed = parseFountain(text);
+    const f = detectFormat(text, fmt);
+    const parsed = f === 'cn' ? parseScriptCN(text) : parseFountain(text);
     addImportedScript(parsed.meta.title || '导入的剧本', parsed.blocks, parsed.meta);
   }
 
@@ -1322,7 +1445,7 @@
   const DEFAULT_VIEW = {
     theme: 'dark', zen: false, editorSize: 15,
     leftWidth: 264, rightWidth: 286, aiWidth: 400, aiLastTab: 'chars',
-    paper: '', ink: '', font: 'courier', fontCustom: '',
+    paper: '', ink: '', font: 'courier', fontCustom: '', scriptFormat: 'fountain',
     leading: 1.5, paperWidth: 790
   };
   const FONT_PRESETS = {
@@ -1355,6 +1478,7 @@
     s.paper = /^#[0-9a-f]{6}$/i.test(s.paper || '') ? s.paper : '';
     s.ink = /^#[0-9a-f]{6}$/i.test(s.ink || '') ? s.ink : '';
     if (!FONT_PRESETS[s.font]) s.font = 'courier';
+    s.scriptFormat = s.scriptFormat === 'cn' ? 'cn' : 'fountain';
     s.fontCustom = String(s.fontCustom || '').slice(0, 160);
     return s;
   }
@@ -1374,7 +1498,16 @@
     const preset = FONT_PRESETS[v.font] || FONT_PRESETS.courier;
     set('--paper-font', (v.font === 'custom' && v.fontCustom.trim()) ? v.fontCustom.trim() : (preset.css || FONT_PRESETS.courier.css));
     $('#app').classList.toggle('custom-paper', Boolean(v.paper || v.ink));
+    $('#blocks').classList.toggle('fmt-cn', v.scriptFormat === 'cn');
     $$('.block-input').forEach(autoHeight);
+  }
+
+  function setScriptFormat(fmt) {
+    lib.settings.scriptFormat = fmt === 'cn' ? 'cn' : 'fountain';
+    applyAppearance(lib.settings);
+    renderBlocks();
+    scheduleSave();
+    toast(lib.settings.scriptFormat === 'cn' ? '已切换为国内剧本格式（视图）' : '已切换为 Fountain 标准格式（视图）');
   }
 
   function setPanelWidth(side, w) {
@@ -1454,6 +1587,11 @@
           <div class="view-note">字体、字号与纸张颜色只作用于稿纸，导出的 PDF 会沿用所选字体。</div>
         </div>
         <div class="view-section">
+          <div class="view-title">剧本格式（仅编辑器呈现）</div>
+          <div class="view-font-row"><label>显示格式</label><select id="viewFormat"><option value="fountain">Fountain 标准</option><option value="cn">国内剧本（场次·角色居中·台词缩进）</option></select></div>
+          <div class="view-note">切换后编辑器按所选风格排版；导出时仍可单独选择 Fountain 或国内格式。</div>
+        </div>
+        <div class="view-section">
           <div class="view-title">面板布局</div>
           ${row('viewLeft', '左侧大纲', 190, 460, 2)}
           ${row('viewRight', '右侧面板', 230, 560, 2)}
@@ -1465,6 +1603,7 @@
           Object.assign(lib.settings, draft());
           appearanceModalOpen = false;
           applyAppearance(lib.settings);
+          renderBlocks();
           updateStatus();
           scheduleSave();
           closeModal();
@@ -1489,6 +1628,7 @@
     function draft() {
       return normalizeSettings({
         ...lib.settings,
+        scriptFormat: $('#viewFormat').value,
         paper: $('#viewPaperOn').checked ? $('#viewPaper').value : '',
         ink: $('#viewInkOn').checked ? $('#viewInk').value : '',
         font: $('#viewFont').value,
@@ -1508,6 +1648,7 @@
       $('#viewInk').value = v.ink || '#1e2026';
       $('#viewFont').value = v.font;
       $('#viewFontCustom').value = v.fontCustom;
+      $('#viewFormat').value = v.scriptFormat;
       $('#viewSize').value = v.editorSize;
       $('#viewLeading').value = v.leading;
       $('#viewWidth').value = v.paperWidth;
@@ -1589,9 +1730,12 @@
     zoomOut:    { label: '缩小正文', desc: '减小剧本字号', icon: 'i-plus', key: 'Ctrl+-', group: '视图', run: () => zoom(-1) },
     panelLeft:  { label: '显示 / 隐藏大纲', desc: '窄窗口下的场景大纲', icon: 'i-scene', group: '视图', run: () => togglePanel('left') },
     panelRight: { label: '显示 / 隐藏角色与统计', desc: '窄窗口下的右侧面板', icon: 'i-chart', group: '视图', run: () => togglePanel('right') },
+    fmtFountain:{ label: '格式：Fountain 标准', desc: '编辑器按 Fountain 风格呈现', icon: 'i-cmd', group: '视图', run: () => setScriptFormat('fountain') },
+    fmtCn:      { label: '格式：国内剧本', desc: '场次编号、角色居中、台词缩进', icon: 'i-cmd', group: '视图', run: () => setScriptFormat('cn') },
     command:    { label: '打开命令面板', desc: '搜索命令与场景', icon: 'i-cmd', key: 'Ctrl+K', group: '视图', run: openCommand },
     expFtn:     { label: '导出 Fountain', desc: '通用编剧格式，可与 Final Draft 等互通', icon: 'i-download', group: '导出', run: () => doExport('fountain') },
     expTxt:     { label: '导出纯文本', desc: '保留剧本缩进的 .txt', icon: 'i-download', group: '导出', run: () => doExport('txt') },
+    expCn:      { label: '导出国内格式', desc: '剧本杀 / 话剧式排版：角色独占行、场次编号', icon: 'i-download', group: '导出', run: () => doExport('cn') },
     expProj:    { label: '导出剧本工程', desc: '包含全部元数据的 .screenplay', icon: 'i-download', group: '导出', run: () => doExport('project') },
     expPdf:     { label: '导出 PDF 剧本', desc: 'A4 标准剧本排版，封面独立成页', icon: 'i-print', key: 'Ctrl+P', group: '导出', run: () => doExport('pdf') },
     expPrint:   { label: '打印…', desc: '调用系统打印对话框', icon: 'i-print', group: '导出', run: () => doExport('print') },
@@ -1603,8 +1747,8 @@
     file:   [ 'new', 'importFile', 'importPaste', '-', 'save', 'saveAs', '-', 'workspace' ],
     edit:   [ 'undo', 'redo', '-', 'dupBlock', 'deleteBlock', 'moveUp', 'moveDown' ],
     insert: [ 'newScene', 'insAction', 'insChar', 'insDlg', 'insParen', 'insTrans', 'insSection', 'insNote' ],
-    view:   [ 'zen', 'theme', '-', 'appearance', 'zoomIn', 'zoomOut', 'panelLeft', 'panelRight', '-', 'command' ],
-    export: [ 'expFtn', 'expTxt', 'expProj', '-', 'expPdf', 'expPrint' ],
+    view:   [ 'zen', 'theme', '-', 'appearance', 'fmtFountain', 'fmtCn', '-', 'zoomIn', 'zoomOut', 'panelLeft', 'panelRight', '-', 'command' ],
+    export: [ 'expFtn', 'expCn', 'expTxt', 'expProj', '-', 'expPdf', 'expPrint' ],
     help:   [ 'shortcuts', 'about' ]
   };
 
@@ -1641,6 +1785,18 @@
     const box = $('#menuPopup');
     box.innerHTML = `<div class="menu-heading">切换元素类型</div>` + ORDER.map((t, i) =>
       `<button class="menu-item ${b.type === t ? 'active' : ''}" data-type="${t}" data-block="${id}"><span class="mi-label">${b.type === t ? '✓ ' : '　'}${TYPES[t].label}</span><span class="mi-key">${i + 1}</span></button>`
+    ).join('');
+    box.style.left = Math.min(r.left, window.innerWidth - 250) + 'px';
+    box.style.top = r.bottom + 3 + 'px';
+    box.classList.remove('hidden');
+  }
+
+  function showInsertMenu(beforeId, anchor) {
+    closeMenus();
+    const r = (anchor || document.activeElement).getBoundingClientRect();
+    const box = $('#menuPopup');
+    box.innerHTML = `<div class="menu-heading">插入内容块</div>` + ORDER.map((t, i) =>
+      `<button class="menu-item" data-insert-type="${t}" data-insert-before="${beforeId}"><span class="mi-label">${TYPES[t].label}</span><span class="mi-key">${i + 1}</span></button>`
     ).join('');
     box.style.left = Math.min(r.left, window.innerWidth - 250) + 'px';
     box.style.top = r.bottom + 3 + 'px';
@@ -1701,9 +1857,10 @@
           <button class="import-opt" id="importFileOpt"><svg class="ic" viewBox="0 0 24 24"><use href="#i-folder"/></svg>打开本地文件</button>
           <button class="import-opt" id="importPasteOpt"><svg class="ic" viewBox="0 0 24 24"><use href="#i-file"/></svg>粘贴文本</button>
         </div>
-        <div class="modal-hint">支持 Fountain、纯文本以及本编辑器导出的 .screenplay 工程文件。中文场景标题形如「INT. 咖啡馆 - 夜」。</div>
-        <label class="modal-field"><span>Fountain / 剧本文本</span><textarea id="importText" placeholder="INT. 咖啡馆 - 夜&#10;&#10;雨下个不停。&#10;&#10;林越&#10;我们十分钟后打烊。" spellcheck="false"></textarea></label>`,
-      actions: [{ label: '取消' }, { label: '解析并导入', primary: true, onClick: () => importFromPaste($('#importText').value) }],
+        <div class="modal-hint">支持 Fountain、国内剧本格式（角色独占行 + 场次编号）以及本编辑器导出的 .screenplay 工程文件。</div>
+        <label class="modal-field"><span>解析格式</span><select id="importFmt"><option value="auto">自动识别</option><option value="fountain">Fountain</option><option value="cn">国内剧本格式</option></select></label>
+        <label class="modal-field"><span>剧本文本</span><textarea id="importText" placeholder="第1场　内景·咖啡馆·夜&#10;&#10;雨下个不停。&#10;&#10;林越&#10;　　我们十分钟后打烊。" spellcheck="false"></textarea></label>`,
+      actions: [{ label: '取消' }, { label: '解析并导入', primary: true, onClick: () => importFromPaste($('#importText').value, $('#importFmt') ? $('#importFmt').value : 'auto') }],
       onMount: () => {
         $('#importFileOpt').addEventListener('click', importFromFile);
         $('#importPasteOpt').addEventListener('click', () => $('#importText').focus());
@@ -2139,7 +2296,7 @@
     appendAiMessage({ role: 'user', mode, text: opts.label || '快捷能力' });
     setAiBusy(true);
     setAiOutput('', false);
-    const res = await api.ai.run({ messages, temperature: opts.temperature, maxTokens: opts.maxTokens })
+    const res = await api.ai.run({ messages, temperature: opts.temperature, maxTokens: opts.maxTokens, attachments: opts.attachments })
       .catch(e => ({ ok: false, error: String(e) }));
     aiState.busy = false;
     setAiBusy(false);
@@ -2249,6 +2406,85 @@
     if (parsed.blocks.length < 3) { toast('生成内容不足以构成剧本，请重试', true); return; }
     addImportedScript(opts.title || opts.idea.slice(0, 14), parsed.blocks,
       { author: '', genre: opts.genre, logline: opts.idea });
+    toast(`已生成新剧本：${parsed.blocks.length} 个内容块`);
+  }
+
+  function openNovelToScript() {
+    let novelAttachments = [];
+    showModal({
+      title: '小说生成剧本',
+      wide: true,
+      body: `<div class="ai-preset-hint">把一段小说 / 散文改写成标准 Fountain 剧本，作为新的剧本文档打开（原剧本不会被修改）。可粘贴正文，或引用本地文件由 AI 自行读取。</div>
+        <div class="novel-upload" id="novelUpload">
+          <button type="button" class="novel-upload-btn" id="novelFileBtn"><svg class="ic" viewBox="0 0 24 24"><use href="#i-folder"/></svg>引用文件（Markdown / TXT）</button>
+          <span class="novel-upload-hint">点击选择本地文件作为参考，生成时由 AI 自行读取，不会在这里读取或截断</span>
+          <div class="novel-files hidden" id="novelFiles"></div>
+        </div>
+        <label class="modal-field"><span>小说 / 散文正文（可留空，仅引用文件时）</span><textarea id="aiNText" rows="10" placeholder="在此粘贴小说片段或整章…"></textarea></label>
+        <label class="modal-field"><span>剧本标题（可留空）</span><input id="aiNTitle" type="text" placeholder="留空则用正文前几个字命名"></label>
+        <label class="modal-field"><span>类型 / 风格</span><input id="aiNGenre" type="text" placeholder="剧情 / 悬疑 / 喜剧…"></label>
+        <label class="modal-field"><span>额外要求</span><input id="aiNExtra" type="text" placeholder="例如：对白克制、保留原结局、拆成 3 场"></label>`,
+      actions: [
+        { label: '取消' },
+        { label: '开始生成', primary: true, onClick: () => {
+          const text = $('#aiNText').value.trim();
+          if (!text && !novelAttachments.length) { toast('请粘贴小说或引用文件', true); return; }
+          if (text.length > 12000) { toast('正文过长，请控制在 12000 字以内', true); return; }
+          const opts = {
+            text,
+            title: $('#aiNTitle').value.trim(),
+            genre: $('#aiNGenre').value.trim(),
+            extra: $('#aiNExtra').value.trim(),
+            attachments: novelAttachments
+          };
+          closeModal();
+          aiNovelToScript(opts);
+        } }
+      ],
+      onMount: () => {
+        const filesBox = $('#novelFiles');
+        const render = () => {
+          if (!novelAttachments.length) { filesBox.classList.add('hidden'); filesBox.innerHTML = ''; return; }
+          filesBox.classList.remove('hidden');
+          filesBox.innerHTML = novelAttachments.map((a, i) =>
+            `<span class="file-chip" data-nv-att="${i}">${esc(a.name)}<button type="button" class="file-chip-x" title="移除">×</button></span>`
+          ).join('');
+        };
+        $('#novelFileBtn').addEventListener('click', async () => {
+          const list = await pickRefFiles();
+          if (list && list.length) { novelAttachments = novelAttachments.concat(list); render(); toast(`已引用 ${list.length} 个文件`); }
+        });
+        filesBox.addEventListener('click', (e) => {
+          const x = e.target.closest('[data-nv-att]');
+          if (x) { novelAttachments.splice(Number(x.dataset.nvAtt), 1); render(); }
+        });
+      }
+    });
+  }
+
+  async function aiNovelToScript(opts) {
+    showAiPanel();
+    setAiMode('quick');
+    const messages = [
+      { role: 'system', content: AI_SYSTEM + ' 你输出的剧本必须是标准 Fountain 纯文本。' },
+      { role: 'user', content: `请把下面这段小说 / 散文改写成标准 Fountain 剧本。
+类型 / 风格：${opts.genre || '剧情'}
+额外要求：${opts.extra || '无'}
+
+改写规则：
+- 把叙事性散文转化为剧本格式：环境与时空调度写成「INT./EXT. 地点 - 时间」场景标题；可见的动作与神态写成动作描述；角色说的话写成对白（角色名全大写独占一行，对白紧随其后）；低声、动作提示用（括号）另起一行。
+- 不要新增原文没有的重要情节或人物，保持故事原意、语气与结局。
+- 若原文没有对白，可依据情境为关键角色补少量贴合性格的台词，但不要过度发挥。
+- 严格按 Fountain 语法输出，不要输出任何解释、标题行、Markdown 或代码块。
+
+【小说 / 散文正文】
+${opts.text || '（请基于本次附加的参考文件进行改写）'}` }
+    ];
+    const text = await aiRun('novel', messages, { temperature: 0.5, maxTokens: 4096, attachments: opts.attachments, label: `小说生成剧本 · ${(opts.text || '参考文件').slice(0, 40)}${(opts.text || '参考文件').length > 40 ? '…' : ''}` });
+    if (!text) return;
+    const parsed = parseFountain(text);
+    if (parsed.blocks.length < 3) { toast('生成内容不足以构成剧本，请重试', true); return; }
+    addImportedScript(opts.title || opts.text.slice(0, 14), parsed.blocks, { author: '', genre: opts.genre, logline: '' });
     toast(`已生成新剧本：${parsed.blocks.length} 个内容块`);
   }
 
@@ -2656,6 +2892,35 @@
     });
   }
 
+  let aiAttachments = [];
+  async function pickRefFiles() {
+    if (api.ai && typeof api.ai.pickFiles === 'function') {
+      try { const list = await api.ai.pickFiles(); return Array.isArray(list) ? list : []; } catch { return []; }
+    }
+    // 非桌面环境（网页预览）：用隐藏 input 读取，便于演示；桌面端走上面的真实路径对话框
+    return new Promise(resolve => {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = '.md,.markdown,.txt,.fountain,.spmd,.json,.csv,text/plain,text/markdown';
+      input.multiple = true;
+      input.addEventListener('change', async () => {
+        const out = [];
+        for (const f of [...input.files]) { try { out.push({ name: f.name, path: 'web://' + f.name, content: await f.text() }); } catch {} }
+        resolve(out);
+      });
+      input.click();
+    });
+  }
+  function renderAiAttachments() {
+    const box = $('#aiAttachments');
+    if (!box) return;
+    if (!aiAttachments.length) { box.classList.add('hidden'); box.innerHTML = ''; return; }
+    box.classList.remove('hidden');
+    box.innerHTML = aiAttachments.map((a, i) =>
+      `<span class="file-chip" data-ai-att="${i}">${esc(a.name)}<button type="button" class="file-chip-x" title="移除">×</button></span>`
+    ).join('');
+  }
+
   async function aiAgentRun(resume = false) {
     showAiPanel();
     setAiMode('agent');
@@ -2676,6 +2941,8 @@
     session.scriptId = lib.activeId;
     session.scriptTitle = script()?.title || '';
     aiLiveInstruction = instruction || prior?.instruction || '';
+    const sendAttachments = resume ? [] : aiAttachments.slice();
+    aiAttachments = []; renderAiAttachments();
     aiState = { busy: true, mode: 'agent', text: '' };
     appendAiMessage({ role: 'user', mode: 'agent', engine, text: (resume ? '继续任务：' : '') + aiLiveInstruction });
     $('#aiAgentInput').value = '';
@@ -2685,7 +2952,7 @@
     setAiBusy(true);
     setAiOutput('', false);
     addAiStep({ name: 'start', ok: true, pending: true, summary: `${resume ? '续跑' : engine === 'deepagents' ? 'Deep Agents' : '内置引擎'} 正在规划并持续执行任务…` });
-    const res = await api.ai.agent({ instruction, engine, resume, prior: resume ? prior : null })
+    const res = await api.ai.agent({ instruction, engine, resume, prior: resume ? prior : null, attachments: sendAttachments })
       .catch(e => ({ ok: false, error: String(e) }));
     aiState.busy = false;
     setAiBusy(false);
@@ -2745,9 +3012,10 @@
     aiExpand: { label: '智能扩写', desc: '把当前块扩写成更有画面感的正文', icon: 'i-plus', group: 'AI', run: aiExpand },
     aiPolish: { label: '智能润色', desc: '精简并强化当前块文字', icon: 'i-check', group: 'AI', run: aiPolish },
     aiWrite:  { label: '自动写剧本…', desc: '根据一句话故事生成完整 Fountain 剧本', icon: 'i-logo', group: 'AI', run: openAiWrite },
+    aiNovel:  { label: '小说生成剧本…', desc: '把小说 / 散文改写成 Fountain 剧本', icon: 'i-logo', group: 'AI', run: openNovelToScript },
     aiStop:   { label: '停止 AI 生成', desc: '中断当前生成', icon: 'i-close', group: 'AI', run: aiStop }
   });
-  MENUS.ai = ['aiConfig', '-', 'inlineAi', 'aiAgent', 'aiResume', '-', 'aiHint', 'aiExpand', 'aiPolish', '-', 'aiWrite', 'aiStop'];
+  MENUS.ai = ['aiConfig', '-', 'inlineAi', 'aiAgent', 'aiResume', '-', 'aiHint', 'aiExpand', 'aiPolish', '-', 'aiWrite', 'aiNovel', 'aiStop'];
 
   function openAbout() {
     showModal({
@@ -2836,6 +3104,8 @@
       if (chip) { e.preventDefault(); inlineAiSend(chip.dataset.inlinePrompt); return; }
       const aiBtn = e.target.closest('[data-ai-block]');
       if (aiBtn) { e.preventDefault(); openInlineAi(aiBtn.dataset.aiBlock); return; }
+      const addBefore = e.target.closest('[data-add-before]');
+      if (addBefore) { e.preventDefault(); showInsertMenu(addBefore.dataset.addBefore, addBefore); return; }
       const badge = e.target.closest('[data-badge]');
       if (badge) { e.preventDefault(); showTypeMenu(badge.dataset.badge, badge); }
     });
@@ -2872,7 +3142,9 @@
       const item = e.target.closest('[data-action]');
       if (item) { closeMenus(); ACTIONS[item.dataset.action]?.run(); return; }
       const typeItem = e.target.closest('[data-type]');
-      if (typeItem) { const id = typeItem.dataset.block; closeMenus(); changeType(id, typeItem.dataset.type); }
+      if (typeItem) { const id = typeItem.dataset.block; closeMenus(); changeType(id, typeItem.dataset.type); return; }
+      const insertItem = e.target.closest('[data-insert-type]');
+      if (insertItem) { closeMenus(); insertBeforeBlock(insertItem.dataset.insertBefore, insertItem.dataset.insertType); }
     });
 
     /* 大纲 */
@@ -2947,6 +3219,24 @@
     $('#aiAgentResume').addEventListener('click', () => aiAgentRun(true));
     $('#aiAgentInput').addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); aiAgentRun(); }
+      if (e.key === 'Escape') $('#aiMention').classList.add('hidden');
+    });
+    $('#aiAgentInput').addEventListener('input', () => {
+      const ta = $('#aiAgentInput');
+      const v = ta.value;
+      const pos = ta.selectionStart ?? v.length;
+      const before = v.slice(0, pos);
+      const trigger = /@$/.test(before) && (before.length === 1 || /[\s\n]$/.test(before.slice(0, -1)));
+      $('#aiMention').classList.toggle('hidden', !trigger);
+    });
+    $('#aiMentionFileBtn').addEventListener('click', async () => {
+      $('#aiMention').classList.add('hidden');
+      const list = await pickRefFiles();
+      if (list && list.length) { aiAttachments = aiAttachments.concat(list); renderAiAttachments(); toast(`已引用 ${list.length} 个文件，发送时由 AI 自行读取`); }
+    });
+    $('#aiAttachments').addEventListener('click', (e) => {
+      const x = e.target.closest('[data-ai-att]');
+      if (x) { aiAttachments.splice(Number(x.dataset.aiAtt), 1); renderAiAttachments(); }
     });
     $$('.ai-chip').forEach(b => b.addEventListener('click', () => {
       $('#aiAgentInput').value = b.dataset.aiPrompt;
@@ -2996,7 +3286,7 @@
     updateEngineTip();
     $('#aiConfigBtn').addEventListener('click', openAiConfig);
     $$('.ai-action').forEach(b => b.addEventListener('click', () => {
-      ({ hint: aiHint, expand: aiExpand, polish: aiPolish, write: openAiWrite })[b.dataset.ai]?.();
+      ({ hint: aiHint, expand: aiExpand, polish: aiPolish, write: openAiWrite, novel: openNovelToScript })[b.dataset.ai]?.();
     }));
     $('#aiReplace').addEventListener('click', () => aiApplyResult('replace'));
     $('#aiInsert').addEventListener('click', () => aiApplyResult('insert'));
@@ -3037,7 +3327,7 @@
 
     /* 点击空白关闭弹层 */
     document.addEventListener('click', (e) => {
-      if (!e.target.closest('#menuPopup') && !e.target.closest('.menu-root') && !e.target.closest('#quickExportBtn') && !e.target.closest('.type-badge')) closeMenus();
+      if (!e.target.closest('#menuPopup') && !e.target.closest('.menu-root') && !e.target.closest('#quickExportBtn') && !e.target.closest('.type-badge') && !e.target.closest('.block-add')) closeMenus();
       if (!e.target.closest('#docMenu') && !e.target.closest('#docBtn')) $('#docMenu').classList.add('hidden');
       if (!e.target.closest('#suggest') && !e.target.closest('.block-input')) closeSuggest();
       if (!e.target.closest('#aiSessionDrawer') && !e.target.closest('#aiSessionsToggle')) $('#aiSessionDrawer').classList.add('hidden');

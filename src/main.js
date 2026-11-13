@@ -344,6 +344,19 @@ ipcMain.handle('file:open', async () => {
   }
 });
 
+ipcMain.handle('file:pick', async (_event, options = {}) => {
+  const result = await dialog.showOpenDialog(win, {
+    title: options && options.title || '选择参考文件',
+    properties: ['openFile', 'multiSelections'],
+    filters: [
+      { name: '文本文件', extensions: ['md', 'markdown', 'txt', 'fountain', 'spmd', 'json', 'csv', 'srt'] },
+      { name: '所有文件', extensions: ['*'] }
+    ]
+  });
+  if (result.canceled || !result.filePaths || !result.filePaths.length) return [];
+  return result.filePaths.map(p => ({ name: path.basename(p), path: p }));
+});
+
 ipcMain.handle('file:save', async (_event, options) => {
   const { content, defaultName = '剧本.fountain', filters } = options || {};
   const result = await dialog.showSaveDialog(win, {
@@ -602,7 +615,21 @@ ipcMain.handle('ai:test', async () => {
 ipcMain.handle('ai:run', async (event, payload) => {
   try {
     aiStopped = false;
-    const text = await aiRequest(payload.messages || [], {
+    const messages = Array.isArray(payload.messages) ? payload.messages.map(m => ({ ...m })) : [];
+    const atts = Array.isArray(payload.attachments) ? payload.attachments : [];
+    if (atts.length) {
+      const chunks = [];
+      for (const a of atts) {
+        try {
+          const t = fs.readFileSync(a.path, 'utf8');
+          const LIM = 60000;
+          chunks.push(`【参考文件：${a.name}】\n${t.length > LIM ? t.slice(0, LIM) + `\n…（已截断至 ${LIM} 字符）` : t}`);
+        } catch (e) {}
+      }
+      const last = messages[messages.length - 1];
+      if (chunks.length && last && last.role === 'user') last.content += '\n\n' + chunks.join('\n\n');
+    }
+    const text = await aiRequest(messages, {
       stream: true,
       temperature: payload.temperature,
       maxTokens: payload.maxTokens,
@@ -725,7 +752,9 @@ const AGENT_TOOLS = [
   { type: 'function', function: { name: 'set_meta', description: '修改剧本元数据', parameters: { type: 'object', properties: {
     field: { type: 'string', enum: ['title', 'author', 'genre', 'logline', 'draft'] },
     value: { type: 'string' } }, required: ['field', 'value'] } } },
-  { type: 'function', function: { name: 'finish', description: '仅当任务清单全部完成且系统验收通过后才可调用；提前调用会被拒绝并返回剩余待办', parameters: { type: 'object', properties: { summary: { type: 'string' } }, required: ['summary'] } } }
+  { type: 'function', function: { name: 'finish', description: '仅当任务清单全部完成且系统验收通过后才可调用；提前调用会被拒绝并返回剩余待办', parameters: { type: 'object', properties: { summary: { type: 'string' } }, required: ['summary'] } } },
+  { type: 'function', function: { name: 'read_file', description: '读取用户附加的参考文件（小说、剧本、大纲、资料等）的完整内容。传入 file 为附件文件名或路径片段（例如 novel.md）；先用系统提示里列出的「参考文件」清单确认名称。仅在确实需要文件内容时才调用。', parameters: { type: 'object', properties: {
+    file: { type: 'string', description: '附件文件名或路径，例如 novel.md 或 /Users/.../novel.md' } }, required: ['file'] } } }
 ];
 
 function agentScript(lib) {
@@ -858,6 +887,20 @@ function agentToolCore(name, args, lib, state) {
       s[args.field] = String(args.value ?? '');
       return { ok: true, field: args.field, value: s[args.field] };
     }
+    case 'read_file': {
+      const atts = Array.isArray(state && state.attachments) ? state.attachments : [];
+      if (!atts.length) return { ok: false, error: '当前没有附加的参考文件，请先通过 AI 输入框 @ 或「小说生成剧本」弹窗添加文件。' };
+      const q = String(args && args.file || '').trim();
+      if (!q) return { ok: false, error: '请传入 file：附件文件名或路径，例如 novel.md' };
+      const hit = atts.find(a => a.name === q || a.path === q || a.path.endsWith('/' + q) || a.path.endsWith('\\' + q) || a.path.toLowerCase().includes(q.toLowerCase()));
+      if (!hit) return { ok: false, error: `未找到附件「${q}」，现有附件：${atts.map(a => a.name).join('、')}` };
+      try {
+        const text = fs.readFileSync(hit.path, 'utf8');
+        const LIMIT = 200000;
+        const truncated = text.length > LIMIT;
+        return { ok: true, name: hit.name, path: hit.path, content: truncated ? text.slice(0, LIMIT) + `\n…（文件较大，已截断至 ${LIMIT} 字符）` : text, truncated };
+      } catch (err) { return { ok: false, error: `读取失败：${String(err && err.message || err)}` }; }
+    }
     case 'finish': {
       const p = agentProgress(state);
       if (!p.total) return { ok: false, error: '尚未制定任务计划：请先调用 plan 列出完成目标所需的步骤，再逐项完成。', progress: p };
@@ -938,7 +981,9 @@ function agentPlanText(state) {
 function agentMessages(lib, instruction, state, continuing) {
   const s = agentScript(lib);
   const p = agentProgress(state);
-  const head = `【剧本】${s.title} · 类型：${s.genre || '未设定'} · 当前 ${s.blocks.length} 个内容块\n【一句话故事】${s.logline || '未设定'}\n【用户指令】${instruction}`;
+  const atts = Array.isArray(state && state.attachments) ? state.attachments : [];
+  const attLine = atts.length ? `\n【参考文件（需要其内容时调用 read_file 工具读取）】\n${atts.map((a, i) => `${i + 1}. ${a.name}（${a.path}）`).join('\n')}` : '';
+  const head = `【剧本】${s.title} · 类型：${s.genre || '未设定'} · 当前 ${s.blocks.length} 个内容块\n【一句话故事】${s.logline || '未设定'}\n【用户指令】${instruction}${attLine}`;
   const status = `\n【系统任务清单】\n${agentPlanText(state)}\n【验收状态】${p.done}/${p.total} 项完成 · 已完成 ${p.edits} 次剧本编辑\n【剩余目标】${p.remainingGoal}`;
   if (!continuing) {
     return [
@@ -952,13 +997,14 @@ function agentMessages(lib, instruction, state, continuing) {
   ];
 }
 
-async function runBuiltinAgent({ cfg, instruction, lib, event, signal, prior }) {
+async function runBuiltinAgent({ cfg, instruction, lib, event, signal, prior, attachments }) {
   const state = {
     plan: normalizeAgentPlan(prior?.plan),
     steps: Array.isArray(prior?.steps) ? [...prior.steps].slice(-60) : [],
     toolCalls: Number(prior?.toolCalls) || 0,
     editCount: Number(prior?.editCount) || 0,
-    text: '', truncated: false, verified: false
+    text: '', truncated: false, verified: false,
+    attachments: Array.isArray(attachments) ? attachments : []
   };
   const sendStep = (step) => { if (!event.sender.isDestroyed()) event.sender.send('ai:step', step); };
   const sendPlan = () => { if (!event.sender.isDestroyed()) event.sender.send('ai:plan', state.plan); };
@@ -1057,7 +1103,7 @@ ipcMain.handle('ai:agent', async (event, payload = {}) => {
     const instruction = String(payload.instruction || prior?.instruction || '');
     if (!instruction) return { ok: false, error: '请输入任务指令' };
     const snapshot = JSON.stringify(lib.scripts);
-    const context = { cfg, instruction, lib, event, signal: aiController.signal };
+    const context = { cfg, instruction, lib, event, signal: aiController.signal, attachments: payload.attachments };
     let result;
     if (payload.engine === 'deepagents' && !payload.resume) {
       const deepState = { plan: [], steps: [], toolCalls: 0, editCount: 0 };

@@ -29,6 +29,7 @@ contextBridge.exposeInMainWorld('desktop', {
     run: (payload) => ipcRenderer.invoke('ai:run', payload),
     stop: () => ipcRenderer.invoke('ai:stop'),
     agent: (payload) => ipcRenderer.invoke('ai:agent', payload),
+    pickFiles: () => ipcRenderer.invoke('file:pick'),
     inline: (payload) => ipcRenderer.invoke('ai:inline', payload),
     inlineStop: () => ipcRenderer.invoke('ai:inline:stop'),
     onChunk: (cb) => {

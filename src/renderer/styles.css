@@ -270,6 +270,17 @@ button { cursor: pointer; }
 .block:hover .type-badge, .block.active .type-badge { opacity: 1; pointer-events: auto; cursor: pointer; }
 .block.active .type-badge { color: var(--accent); border-color: rgba(223, 169, 92, .35); }
 
+.block-add {
+  position: absolute; left: -2px; top: -19px; z-index: 3;
+  display: grid; place-items: center; width: 20px; height: 18px; padding: 0;
+  border: 1px solid var(--border); border-radius: 4px;
+  background: var(--panel-2); color: var(--text-3);
+  font-family: var(--ui-font); opacity: 0; pointer-events: none; transition: opacity .12s;
+}
+.block-add .ic { width: 11px; height: 11px; }
+.block:hover .block-add, .block.active .block-add { opacity: 1; pointer-events: auto; }
+.block-add:hover { border-color: var(--accent); color: var(--accent); background: var(--panel-3); }
+
 .block[data-type="scene"] { margin-top: 1.7em; margin-bottom: 1.1em; }
 .block[data-type="scene"] .block-input { font-weight: 700; text-transform: uppercase; letter-spacing: .02em; }
 .block[data-type="action"] { margin-bottom: 1.15em; }
@@ -290,6 +301,15 @@ button { cursor: pointer; }
 }
 .block[data-type="note"] .block-input { color: #7a6636; }
 .block[data-type="note"]::before { content: '备注 · 不导出'; position: absolute; right: 8px; top: -15px; font-family: var(--ui-font); font-size: 9px; color: var(--paper-muted); }
+
+/* 国内剧本视图：场次编号、角色居中、台词缩进、去除英文大写 */
+.fmt-cn .block[data-type="scene"] { margin-top: 1.9em; margin-bottom: 1.2em; }
+.fmt-cn .block[data-type="scene"] .block-input { text-transform: none; letter-spacing: 0; }
+.fmt-cn .block[data-type="character"] { margin-left: 0; width: 100%; margin-top: 1.4em; margin-bottom: .1em; }
+.fmt-cn .block[data-type="character"] .block-input { text-transform: none; text-align: center; }
+.fmt-cn .block[data-type="dialogue"] { margin-left: 2ch; width: calc(100% - 2ch); margin-bottom: .55em; }
+.fmt-cn .block[data-type="parenthetical"] { margin-left: 8ch; width: calc(100% - 12ch); margin-bottom: .1em; }
+.fmt-cn .block[data-type="transition"] .block-input { text-transform: none; }
 
 /* ---------------------------- 行内 AI ---------------------------- */
 .block-ai-btn {
@@ -592,8 +612,27 @@ body.ai-editing .type-badge { pointer-events: none; opacity: .6; }
 .ai-composer { display: flex; flex-direction: column; gap: 6px; padding-top: 7px; border-top: 1px solid var(--border-soft); }
 .ai-agent-pane, .ai-quick-pane { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .ai-chip:disabled { opacity: .45; cursor: not-allowed; }
-.ai-composer-box { padding: 6px; border: 1px solid var(--border); border-radius: 9px; background: var(--panel); }
+.ai-composer-box { position: relative; padding: 6px; border: 1px solid var(--border); border-radius: 9px; background: var(--panel); }
 .ai-composer-box:focus-within { border-color: var(--accent); }
+.ai-mention { position: absolute; left: 8px; right: 8px; bottom: calc(100% + 6px); z-index: 60; padding: 5px; border-radius: 8px; border: 1px solid var(--border); background: var(--panel-2); box-shadow: 0 14px 36px rgba(0, 0, 0, .45); }
+.ai-mention-item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 9px; border: 0; border-radius: 6px; background: transparent; color: var(--text-2); font-family: var(--ui-font); font-size: 11.5px; text-align: left; }
+.ai-mention-item:hover { background: var(--panel-3); color: var(--text); }
+.ai-mention-item .ic { width: 14px; height: 14px; color: var(--accent); }
+
+.novel-upload { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 0 0 12px; padding: 10px 12px; border: 1px dashed var(--border); border-radius: 8px; background: var(--panel-2); }
+.novel-upload.dragging { border-color: var(--accent); background: var(--accent-soft); }
+.novel-upload-btn { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; border: 1px solid var(--border); border-radius: 7px; background: var(--panel-3); color: var(--text); font-family: var(--ui-font); font-size: 12px; }
+.novel-upload-btn:hover { border-color: var(--accent); color: var(--accent); }
+.novel-upload-btn .ic { width: 14px; height: 14px; }
+.novel-upload-hint { font-family: var(--ui-font); font-size: 11px; color: var(--text-3); }
+
+.ai-attachments, .novel-files { display: flex; flex-wrap: wrap; gap: 5px; }
+.ai-attachments { margin-bottom: 6px; }
+.novel-files { margin-top: 8px; }
+.file-chip { display: inline-flex; align-items: center; gap: 5px; max-width: 230px; padding: 3px 6px 3px 8px; border-radius: 12px; border: 1px solid var(--border); background: var(--panel-3); color: var(--text-2); font-family: var(--ui-font); font-size: 10.5px; }
+.file-chip:hover { border-color: var(--accent); color: var(--text); }
+.file-chip-x { width: 14px; height: 14px; display: grid; place-items: center; border: 0; border-radius: 50%; background: transparent; color: var(--text-3); font-size: 13px; line-height: 1; }
+.file-chip-x:hover { background: var(--accent-soft); color: var(--accent); }
 .ai-composer-box .ai-agent-input { width: 100%; min-height: 42px; max-height: 120px; padding: 2px 3px; border: 0; background: transparent; font-family: var(--ui-font); font-size: 11.5px; line-height: 1.6; }
 .ai-composer-box .ai-agent-input:focus { border: 0; }
 .ai-composer-bar { display: flex; align-items: center; gap: 6px; margin-top: 3px; }
@@ -618,6 +657,7 @@ body.ai-editing .type-badge { pointer-events: none; opacity: .6; }
 
 /* ---------------------------- 下拉 / 弹层 ---------------------------- */
 .dropdown, .menu-popup {
+  -webkit-app-region: no-drag;
   position: absolute; z-index: 100; min-width: 230px; padding: 6px;
   background: var(--panel-2); border: 1px solid var(--border); border-radius: 9px;
   box-shadow: 0 16px 40px rgba(0, 0, 0, .45);

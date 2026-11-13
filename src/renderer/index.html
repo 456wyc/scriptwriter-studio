@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:;">
   <title>剧本工坊</title>
-  <link rel="stylesheet" href="styles.css?v=12">
+  <link rel="stylesheet" href="styles.css?v=18">
 </head>
 <body>
 <svg class="icon-sprite" aria-hidden="true">
@@ -224,12 +224,17 @@
               <button class="ai-action" data-ai="expand"><svg class="ic" viewBox="0 0 24 24"><use href="#i-plus"/></svg><span>智能扩写</span></button>
               <button class="ai-action" data-ai="polish"><svg class="ic" viewBox="0 0 24 24"><use href="#i-check"/></svg><span>智能润色</span></button>
               <button class="ai-action primary" data-ai="write"><svg class="ic" viewBox="0 0 24 24"><use href="#i-logo"/></svg><span>根据设定自动写剧本</span></button>
+              <button class="ai-action" data-ai="novel"><svg class="ic" viewBox="0 0 24 24"><use href="#i-logo"/></svg><span>小说生成剧本</span></button>
             </div>
             <div class="ai-scope" id="aiScope">作用于当前内容块</div>
           </div>
 
           <div class="ai-composer-box">
-            <textarea id="aiAgentInput" class="ai-agent-input" rows="2" spellcheck="false" placeholder="告诉 AI 要改动什么… 例如：把便利店这场改成暴雨夜，给女孩加两句克制的对白"></textarea>
+            <textarea id="aiAgentInput" class="ai-agent-input" rows="2" spellcheck="false" placeholder="告诉 AI 要改动什么… 输入 @ 可引用本地文件（.md / .txt），由 AI 自行读取"></textarea>
+            <div class="ai-attachments hidden" id="aiAttachments"></div>
+            <div class="ai-mention hidden" id="aiMention">
+              <button class="ai-mention-item" id="aiMentionFileBtn" type="button"><svg class="ic" viewBox="0 0 24 24"><use href="#i-folder"/></svg><span>引用本地文件（Markdown / TXT）</span></button>
+            </div>
             <div class="ai-composer-bar">
               <select id="aiEngine" aria-label="智能体引擎">
                 <option value="builtin">内置工具引擎 · 通用兼容</option>
@@ -298,6 +303,6 @@
   </div>
 </div>
 
-<script src="app.js?v=12"></script>
+<script src="app.js?v=18"></script>
 </body>
 </html>
