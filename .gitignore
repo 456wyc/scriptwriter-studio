@@ -22,3 +22,4 @@ desktop.ini
 .vscode/
 .idea/
 *.swp
+.playwright-cli
